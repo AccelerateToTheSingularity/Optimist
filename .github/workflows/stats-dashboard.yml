@@ -1,0 +1,68 @@
+name: Update Stats Dashboard
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:
+  push:
+    paths:
+      - 'data/stats.json'
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Generate stats page
+        run: python generate_stats_page.py
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          force_orphan: true
+
+  monthly-email:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 9 1 * *' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Generate and send monthly report
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: |
+          python -c "
+          import json
+          import os
+          
+          with open('data/stats.json', 'r') as f:
+              stats = json.load(f)
+          
+          print('Monthly Stats Report')
+          print(f\"Total TLDRs: {stats.get('total_tldrs', 0)}\")
+          print(f\"Total Cost: \${stats.get('total_cost', 0):.4f}\")
+          print(f\"Total Runs: {stats.get('runs', 0)}\")
+          "
