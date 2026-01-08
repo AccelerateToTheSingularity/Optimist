@@ -7,7 +7,7 @@ SUBREDDIT = "accelerate"
 
 # TLDR Settings
 POST_WORD_THRESHOLD = 270  # Minimum words to trigger TLDR for posts
-COMMENT_WORD_THRESHOLD = 300  # Minimum words to trigger TLDR for comments
+COMMENT_WORD_THRESHOLD = 330  # Minimum words to trigger TLDR for comments
 MAX_TLDR_PER_RUN = 1  # Only 1 TLDR per run (~3 min between TLDRs)
 MAX_TLDR_PER_DAY = 40  # Daily cap for TLDRs
 MAX_AGE_HOURS = 24  # Only process posts/comments from last 24 hours
