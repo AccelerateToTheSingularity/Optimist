@@ -5,6 +5,7 @@ Runs a single check cycle for r/accelerate:
 - Monitors and responds to replies
 - Detects and responds to summons
 - Auto-bans users with excessive negative karma
+- Crossposts top AI posts to r/ProAI
 """
 
 import os
@@ -26,12 +27,14 @@ from config import (
     MAX_AGE_HOURS,
     COMMENT_MILESTONES,
     MAX_REPLIES_PER_DAY,
+    CROSSPOST_ENABLED,
 )
 
-# Import handlers for reply, summon, and ban features
+# Import handlers for reply, summon, ban, and crosspost features
 from reply_handler import check_inbox_replies
 from summon_handler import check_for_summons
 from ban_handler import check_and_ban_negative_karma_users
+from crosspost_handler import check_and_crosspost
 
 
 def load_state(state_file: str = "data/bot_state.json") -> dict:
@@ -681,6 +684,20 @@ def main():
     except Exception as e:
         print(f"  ❌ Error in ban handling: {e}")
     
+    # Phase 7: Crosspost top AI posts to r/ProAI
+    crossposts_made = 0
+    crosspost_tokens = 0
+    crosspost_cost = 0.0
+    if CROSSPOST_ENABLED:
+        try:
+            crossposts_made, crosspost_tokens, crosspost_cost, state = check_and_crosspost(
+                reddit, model, state, args.dry_run
+            )
+            total_tokens += crosspost_tokens
+            total_cost += crosspost_cost
+        except Exception as e:
+            print(f"  ❌ Error in crosspost handling: {e}")
+    
     # Update state
     state["last_check"] = datetime.utcnow().timestamp()
     state["processed_posts"] = list(processed_posts)[-1000:]  # Keep last 1000
@@ -697,7 +714,7 @@ def main():
     update_stats(tldrs_generated=tldrs_generated, tokens=total_tokens, cost=total_cost)
     
     print(f"\n📊 Summary:")
-    print(f"   TLDRs: {tldrs_generated} | Replies: {replies_sent} | Summons: {summons_handled} | Bans: {users_banned}")
+    print(f"   TLDRs: {tldrs_generated} | Replies: {replies_sent} | Summons: {summons_handled} | Bans: {users_banned} | Crossposts: {crossposts_made}")
     print(f"   Tokens: {total_tokens} | Cost: ${total_cost:.6f}")
     print(f"   Daily TLDRs: {state['daily_tldrs']}/{MAX_TLDR_PER_DAY} | Daily Replies: {state.get('daily_replies', 0)}/{MAX_REPLIES_PER_DAY}")
     print(f"✅ Reddit Bot completed at {datetime.utcnow().isoformat()}")

@@ -69,3 +69,16 @@ BOT_INDICATORS = [
     r"auto[\-_]?mod",
     r"AutoModerator",
 ]
+
+# ===== CROSSPOST SETTINGS =====
+# Crosspost top AI posts from r/accelerate to r/ProAI
+CROSSPOST_ENABLED = True                    # Kill switch for crossposting
+CROSSPOST_SOURCE_SUB = "accelerate"         # Subreddit to pull posts from
+CROSSPOST_TARGET_SUB = "ProAI"              # Subreddit to crosspost to
+CROSSPOST_MAX_PER_DAY = 1                   # Max crossposts per day (start conservative)
+CROSSPOST_MIN_SCORE = 10                    # Minimum upvotes to consider a post
+CROSSPOST_MIN_HOURS_OLD = 12                # Post must be at least this old (hours)
+CROSSPOST_MAX_HOURS_OLD = 48                # Don't crosspost posts older than this (hours)
+CROSSPOST_SKIP_CHANCE = 0.0                 # 0% skip for first test (restore to 0.05 later)
+CROSSPOST_TIME_VARIATION_HOURS = (0, 0)     # Trigger immediately (restore to (1, 5) later)
+CROSSPOST_LOOKBACK_DAYS = 2                 # How far back to check target sub for dupes
