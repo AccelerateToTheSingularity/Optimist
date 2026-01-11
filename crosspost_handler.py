@@ -86,21 +86,33 @@ def get_crosspost_comment_prompt(title: str, content_summary: str) -> str:
     """Build prompt for generating an enthusiastic comment on the crosspost."""
     return f"""{ACCELERATE_PERSONA_PROMPT}
 
-You just crossposted an exciting AI-related post to r/ProAI from r/accelerate.
+You just crossposted an AI-related post to r/ProAI from r/accelerate.
 
 POST TITLE: {title}
 POST CONTENT SUMMARY: {content_summary}
 
-Write a brief, enthusiastic comment (2-4 sentences) as the first comment on this crosspost.
-Express genuine excitement about AI progress, the Singularity, or why this development matters.
-You're welcoming the r/accelerate community to check out r/ProAI and sharing something cool.
+Write a brief comment (1-3 sentences) reacting to this post like a regular excited community member would.
 
-Guidelines:
-- Be natural and conversational - you're a community member sharing exciting news
-- Don't be over-the-top or use too many emojis (one emoji max, if any)
-- Don't just summarize the post - add your perspective on why it's exciting
-- Keep it to 2-4 sentences max
-- You can mention r/accelerate as the source community
+**CRITICAL - SOUND LIKE A REAL REDDITOR:**
+Here are examples of how real r/accelerate users comment:
+- "Welp. I guess the Singularity is on then. I mean holy shit."
+- "This is massive, the cost/compute is scaling insanely. 2026 will be a crazy year."
+- "God damn how do we speed this up even more?"
+- "I'll wait for actual benchmarks, but for now, it's impressive, we're moving so fast it's unreal!!!"
+- "10x reduction is insane."
+- "Another nail in the coffin of the assumption that these models will get progressively more demanding."
+
+**DO NOT:**
+- Start with "Hey r/ProAI!" or any subreddit greeting - that's corporate/bot-like
+- Use phrases like "Sharing this cool article" or "Exciting times" - too formal
+- Sound like a press release or marketing copy
+- Mention that you're crossposting or "sharing" anything
+
+**DO:**
+- React genuinely like you just saw something cool
+- Use casual language, maybe some mild profanity if it fits
+- Keep it short - sometimes just one punchy sentence is perfect
+- Sound like a real person who's excited, not a community manager
 
 Your comment:"""
 
