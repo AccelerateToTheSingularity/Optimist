@@ -1,51 +1,51 @@
 {
-  "last_check": 1768452986.95933,
+  "last_check": 1768453537.240874,
   "processed_posts": [
-    "1q225qa",
-    "1qabwlw",
-    "1q540w8",
-    "1q7qkoq",
-    "1q27d25",
-    "1q97atr",
-    "1qd67sd",
-    "1q7m008",
-    "1qaxv2p",
-    "1qbkefl",
-    "1q5k9h6",
-    "1q7c6uw",
-    "1q7umxx",
-    "1q4rao5",
-    "1q62h43",
-    "1q7emu1",
-    "1qby294",
-    "1q7xnf2",
-    "1q69lay",
-    "1q26fmj",
-    "1qcpayu",
-    "1q9cjpt",
-    "1q3d8rv",
-    "1qadsk2",
-    "1q3u54t",
-    "1q6cu5z",
-    "1q2vynu",
-    "1qa93ay",
-    "1qbip20",
-    "1q6o06k",
-    "1q2wcw6",
-    "1q33qfc",
-    "1q4rzri",
-    "1q54gen",
-    "1q4fkkg",
-    "1q7djrc",
     "1q2j6a2",
-    "1q701lu",
+    "1q2vynu",
+    "1q7djrc",
+    "1q26fmj",
+    "1q7m008",
+    "1q4fkkg",
     "1qbpvi3",
+    "1q5k9h6",
+    "1q69lay",
+    "1qbip20",
+    "1q540w8",
+    "1qa93ay",
+    "1q54gen",
+    "1q6o06k",
     "1q44o35",
+    "1q7c6uw",
+    "1q33qfc",
+    "1qbkefl",
+    "1q27d25",
+    "1q225qa",
+    "1qaxv2p",
+    "1q701lu",
+    "1q65mtf",
+    "1q97atr",
+    "1q7qkoq",
+    "1qby294",
+    "1q3u54t",
+    "1qabwlw",
+    "1q7umxx",
     "1q8cpgu",
-    "1q65mtf"
+    "1q2wcw6",
+    "1qadsk2",
+    "1q7emu1",
+    "1q4rzri",
+    "1q7xnf2",
+    "1q3d8rv",
+    "1q4rao5",
+    "1qcpayu",
+    "1qd67sd",
+    "1q62h43",
+    "1q9cjpt",
+    "1q6cu5z"
   ],
   "stats": {
-    "total_posts_processed": 1363,
+    "total_posts_processed": 1364,
     "total_tldrs_generated": 128,
     "total_tokens_used": 366424,
     "total_cost": 0.04766499999999996,
@@ -163,147 +163,147 @@
     "1qd5q9w": 20
   },
   "processed_comments": [
-    "ny37z7a",
-    "nxyjwp9",
-    "nxct18i",
-    "nywt659",
-    "nxphk4y",
-    "nyk5pa2",
-    "nxbokj1",
-    "nzeqmm7",
-    "nxmjmjk",
-    "nxcs3ob",
-    "ny2f3ix",
-    "nyk58es",
-    "nzd1yfr",
-    "nyd0c6x",
-    "ny806ti",
-    "nxwdkcz",
-    "nxwtmqc",
-    "nxybcnx",
-    "nxv4o9y",
-    "nxrc6ao",
-    "nyogoff",
-    "ny67qkn",
-    "nxpw7nf",
-    "nxnhaht",
-    "nxr1fhv",
-    "nyu6hk3",
-    "ny1sn8h",
-    "nxcciit",
-    "nz3upyz",
-    "nxf2px2",
-    "nxppp55",
-    "ny2d52i",
-    "nye23b7",
-    "nyijjg5",
-    "nxre2br",
-    "nz2tmab",
-    "nxdk2bj",
-    "nzlrnih",
-    "nxejn2y",
-    "nz41czd",
-    "nxipkoz",
-    "nxa9soc",
+    "nxhgz39",
     "nxcxbyj",
-    "nxsimx3",
-    "nxchy4o",
-    "ny93dyv",
-    "nxgzw97",
-    "nxpwio9",
-    "nxiynxs",
-    "nxekwxj",
-    "nxno5rr",
-    "nxroiz2",
-    "nyk2ezz",
-    "nxmvsc1",
-    "nxg73ar",
-    "nxvhj7h",
-    "nxqizg7",
-    "ny2red8",
-    "nxxct4g",
-    "nz4b2xf",
-    "ny4iayi",
-    "nxce127",
-    "nxvhhoe",
-    "nxuzsv2",
+    "nzlrnih",
+    "nye23b7",
+    "ny2ueun",
+    "ny2f3ix",
     "ny293gz",
-    "nxazc5k",
-    "ny9cer2",
-    "nxy9qcz",
-    "nxwr2hx",
-    "nxpk7b5",
-    "nxwl6wy",
-    "nxdhd5t",
-    "nxdhi17",
+    "nxphk4y",
     "nxpmphx",
+    "nxcciit",
+    "ny9cer2",
+    "nxk3n98",
+    "nxpk7b5",
+    "nz41czd",
+    "nxuzsv2",
+    "nxg73ar",
+    "nxwl6wy",
+    "nxr1fhv",
+    "nxchy4o",
+    "nxrc6ao",
+    "nxdk2bj",
+    "nxqizg7",
+    "nxroiz2",
+    "nxiq52y",
+    "nxy9b4i",
+    "nxyjwp9",
+    "nz3upyz",
+    "nxdhd5t",
     "nxx5vxs",
     "ny7e4vg",
-    "nxy9b4i",
+    "nxxct4g",
+    "nxno5rr",
+    "nxvhhoe",
+    "nyk58es",
+    "nxwtmqc",
+    "nxct18i",
+    "ny2red8",
+    "ny806ti",
+    "ny37z7a",
+    "nxcs3ob",
     "nxy2dw5",
-    "nxiq52y",
+    "nxbokj1",
+    "nxv4o9y",
+    "nxa9soc",
+    "ny4iayi",
+    "nxwr2hx",
+    "nxpw7nf",
     "nycp6s2",
-    "nziap1u",
+    "nzeqmm7",
+    "nxgzw97",
+    "nxwdkcz",
+    "nyk5pa2",
+    "nyk2ezz",
+    "nxsimx3",
+    "nyijjg5",
+    "nz4b2xf",
     "nxjkbkz",
+    "nyu6hk3",
+    "ny2d52i",
+    "nxipkoz",
+    "nxce127",
+    "nxybcnx",
+    "ny93dyv",
+    "nxiynxs",
+    "ny67qkn",
+    "nz2tmab",
+    "nxekwxj",
     "nxxzlrt",
-    "nxhgz39",
-    "nxk3n98",
-    "ny2ueun"
+    "nyd0c6x",
+    "nxazc5k",
+    "nxppp55",
+    "nxf2px2",
+    "nxpwio9",
+    "nxy9qcz",
+    "nywt659",
+    "nxejn2y",
+    "nxmjmjk",
+    "nxdhi17",
+    "nxre2br",
+    "ny1sn8h",
+    "nziap1u",
+    "nyogoff",
+    "nxvhj7h",
+    "nxnhaht",
+    "nxmvsc1",
+    "nzd1yfr"
   ],
   "replied_to_comments": [
-    "ny4wihf",
-    "nyewf4j",
-    "nyxbzik",
-    "nyatkw2",
-    "nyd61qq",
-    "nxnu18w",
-    "ny218ha",
-    "ny2if4k",
-    "nxrfg44",
     "nxoqvar",
-    "nxprbfb",
-    "ny1iu98",
-    "nxs31r5",
-    "nxswpsn",
-    "nyejv3y",
-    "nyxndp0",
-    "nxfx0n7",
+    "ny4wihf",
     "nxnvb2g",
-    "nxswgju",
+    "nxrfg44",
+    "nyets82",
     "nxoqf2s",
+    "nxfa10f",
+    "nxlantk",
+    "nxprbfb",
+    "nxfsczs",
+    "nygnxsu",
+    "nxljllq",
+    "nxfx0n7",
+    "nz6in2u",
+    "nxpmi38",
+    "nyxbzik",
+    "nxoz47t",
+    "ny218ha",
+    "nyxndp0",
+    "nxrvrfq",
+    "nynrr7v",
+    "nxswpsn",
+    "nyatkw2",
     "nxfmbhz",
     "nxouf85",
-    "nz6in2u",
-    "nxfsczs",
-    "nzeuzt0",
-    "nynrr7v",
-    "nxpmi38",
-    "nxlantk",
-    "nxoz47t",
-    "nxv10fn",
+    "nxs31r5",
     "nyeh36k",
-    "nxfa10f",
-    "nyets82",
-    "nxljllq",
-    "nygnxsu",
-    "nyda2si",
-    "nxrvrfq",
+    "ny969lr",
+    "nxswgju",
+    "nxnu18w",
     "nz37po5",
-    "nz25l7r",
-    "ny969lr"
+    "ny1iu98",
+    "nzeuzt0",
+    "ny2if4k",
+    "nyejv3y",
+    "nyda2si",
+    "nxv10fn",
+    "nyewf4j",
+    "nyd61qq",
+    "nz25l7r"
   ],
   "recent_user_replies": {},
   "daily_replies": 1,
   "summon_responses": [
     "ny4klb3",
-    "ny882ti",
+    "nzocbnm",
     "nxoypc4",
     "nz1vr7p",
+    "nyvqp5q",
+    "ny882ti",
     "nyd4bhl",
-    "nzocbnm",
     "ny3grix",
-    "ny4ta0j",
-    "nyvqp5q"
+    "ny4ta0j"
   ],
   "moderator_cache": {
     "moderators": [
@@ -408,6 +408,234 @@
       "HippoMasterRace": {
         "last_scanned": 1768452975.925521,
         "score": -1
+      },
+      "AquilaSpot": {
+        "last_scanned": 1768453335.597463,
+        "score": 3046
+      },
+      "Alex__007": {
+        "last_scanned": 1768453338.605091,
+        "score": 2634
+      },
+      "KrazyA1pha": {
+        "last_scanned": 1768453345.55982,
+        "score": 157
+      },
+      "ShoshiOpti": {
+        "last_scanned": 1768453351.714926,
+        "score": 205
+      },
+      "jlks1959": {
+        "last_scanned": 1768453355.169091,
+        "score": 664
+      },
+      "cloudrunner6969": {
+        "last_scanned": 1768453358.406469,
+        "score": 4614
+      },
+      "dashingstag": {
+        "last_scanned": 1768453362.374122,
+        "score": 8
+      },
+      "End3rWi99in": {
+        "last_scanned": 1768453366.883071,
+        "score": 48
+      },
+      "LordSlyGentleman": {
+        "last_scanned": 1768453371.129601,
+        "score": 103
+      },
+      "UrFavoriteAunty": {
+        "last_scanned": 1768453371.683549,
+        "score": 5
+      },
+      "TenshiS": {
+        "last_scanned": 1768453371.943298,
+        "score": 1
+      },
+      "cf858": {
+        "last_scanned": 1768453375.859413,
+        "score": 1
+      },
+      "lovesdogsguy": {
+        "last_scanned": 1768453382.149114,
+        "score": 2712
+      },
+      "Alive-Tomatillo5303": {
+        "last_scanned": 1768453389.363142,
+        "score": 320
+      },
+      "OrdinaryLavishness11": {
+        "last_scanned": 1768453392.934822,
+        "score": 1784
+      },
+      "Suddzi": {
+        "last_scanned": 1768453398.479667,
+        "score": 304
+      },
+      "KnockKnockP": {
+        "last_scanned": 1768453402.130072,
+        "score": 2
+      },
+      "green_meklar": {
+        "last_scanned": 1768453402.58944,
+        "score": 58
+      },
+      "SgathTriallair": {
+        "last_scanned": 1768453409.119099,
+        "score": 691
+      },
+      "Stock_Helicopter_260": {
+        "last_scanned": 1768453412.842228,
+        "score": 119
+      },
+      "Invincible1": {
+        "last_scanned": 1768453416.660399,
+        "score": 18
+      },
+      "joshul": {
+        "last_scanned": 1768453422.074202,
+        "score": 110
+      },
+      "DisastrousAd2612": {
+        "last_scanned": 1768453426.014413,
+        "score": 193
+      },
+      "PineappleLemur": {
+        "last_scanned": 1768453428.391264,
+        "score": 1
+      },
+      "FirstEvolutionist": {
+        "last_scanned": 1768453431.889352,
+        "score": 560
+      },
+      "No-Experience-5541": {
+        "last_scanned": 1768453435.123364,
+        "score": 200
+      },
+      "Seidans": {
+        "last_scanned": 1768453438.081937,
+        "score": 806
+      },
+      "Ruykiru": {
+        "last_scanned": 1768453440.866065,
+        "score": 2195
+      },
+      "starfries": {
+        "last_scanned": 1768453443.818433,
+        "score": 171
+      },
+      "PaleontologistOne919": {
+        "last_scanned": 1768453446.892568,
+        "score": 28
+      },
+      "bb-wa": {
+        "last_scanned": 1768453450.45566,
+        "score": 111
+      },
+      "Pazzeh": {
+        "last_scanned": 1768453454.24857,
+        "score": 568
+      },
+      "e-n-k-i-d-u-k-e": {
+        "last_scanned": 1768453457.727904,
+        "score": 15
+      },
+      "ElGuano": {
+        "last_scanned": 1768453459.648015,
+        "score": 3
+      },
+      "TwistStrict9811": {
+        "last_scanned": 1768453467.008873,
+        "score": 635
+      },
+      "costafilh0": {
+        "last_scanned": 1768453469.861545,
+        "score": 61
+      },
+      "Founder_SendMyPost": {
+        "last_scanned": 1768453473.492912,
+        "score": 5
+      },
+      "Lain_Staley": {
+        "last_scanned": 1768453475.423704,
+        "score": 125
+      },
+      "Nikolor": {
+        "last_scanned": 1768453479.220352,
+        "score": 4
+      },
+      "fynn34": {
+        "last_scanned": 1768453483.760828,
+        "score": 99
+      },
+      "Dapper-Living-8107": {
+        "last_scanned": 1768453487.482716,
+        "score": 75
+      },
+      "FateOfMuffins": {
+        "last_scanned": 1768453488.38087,
+        "score": 440
+      },
+      "Aware_Age_8543": {
+        "last_scanned": 1768453493.257014,
+        "score": 1
+      },
+      "44th--Hokage": {
+        "last_scanned": 1768453493.486616,
+        "score": 11947
+      },
+      "shadowt1tan": {
+        "last_scanned": 1768453501.644729,
+        "score": 16
+      },
+      "MysteriousPepper8908": {
+        "last_scanned": 1768453502.061793,
+        "score": 160
+      },
+      "MonkeyCartridge": {
+        "last_scanned": 1768453505.92953,
+        "score": 1
+      },
+      "Wise-Original-2766": {
+        "last_scanned": 1768453509.579222,
+        "score": 62
+      },
+      "Chouitate93": {
+        "last_scanned": 1768453510.739301,
+        "score": 1
+      },
+      "Ok-Educator5253": {
+        "last_scanned": 1768453511.330107,
+        "score": 70
+      },
+      "Dismal-Effect-1914": {
+        "last_scanned": 1768453514.708525,
+        "score": 5
+      },
+      "RaceHard": {
+        "last_scanned": 1768453515.406382,
+        "score": 1
+      },
+      "my_shiny_new_account": {
+        "last_scanned": 1768453518.559976,
+        "score": 453
+      },
+      "MoovieGroovie": {
+        "last_scanned": 1768453522.078833,
+        "score": 491
+      },
+      "mrdarknezz1": {
+        "last_scanned": 1768453525.228108,
+        "score": 87
+      },
+      "No_Indication_1238": {
+        "last_scanned": 1768453528.890182,
+        "score": 8
+      },
+      "Vlookup_reddit": {
+        "last_scanned": 1768453532.5372,
+        "score": 20
       }
     }
   }
