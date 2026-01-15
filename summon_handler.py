@@ -16,8 +16,13 @@ from config import (
     SAME_USER_COOLDOWN_HOURS,
     SAME_USER_REPLIES_BEFORE_COOLDOWN,
     MOD_CACHE_REFRESH_DAYS,
+    ACCELERATION_ENABLED,
 )
 from persona import generate_conversational_response, generate_post_summon_response
+from acceleration_handler import (
+    handle_acceleration_command,
+    background_scan_commenter,
+)
 
 
 def get_cached_moderators(state: dict, subreddit) -> set:
@@ -119,6 +124,7 @@ def check_for_summons(
     gemini_model,
     state: dict,
     bot_username: str,
+    reddit=None,
     dry_run: bool = False
 ) -> tuple[int, int, float, dict]:
     """
@@ -129,6 +135,7 @@ def check_for_summons(
         gemini_model: Initialized Gemini model
         state: Current bot state dict
         bot_username: The bot's Reddit username
+        reddit: PRAW Reddit instance (for acceleration feature)
         dry_run: If True, don't actually post replies
     
     Returns:
@@ -170,11 +177,15 @@ def check_for_summons(
             if not comment.body or comment.body == '[deleted]':
                 continue
             
+            author_name = comment.author.name if comment.author else None
+            
+            # Background scan all commenters for negative karma (non-blocking)
+            if ACCELERATION_ENABLED and reddit and author_name and not is_likely_bot(author_name):
+                state = background_scan_commenter(author_name, subreddit, reddit, state, dry_run)
+            
             # Check if this is a summon
             if not is_summon(comment.body):
                 continue
-            
-            author_name = comment.author.name if comment.author else None
             
             # Skip bots
             if is_likely_bot(author_name):
@@ -203,7 +214,21 @@ def check_for_summons(
                 # Get submission for context
                 submission = comment.submission
                 
-                # Generate response
+                # Check if this is an acceleration command first
+                if ACCELERATION_ENABLED and reddit:
+                    accel_response, state = handle_acceleration_command(
+                        comment, subreddit, reddit, gemini_model, state, dry_run
+                    )
+                    if accel_response:
+                        # This was an acceleration command
+                        if not dry_run:
+                            comment.reply(accel_response)
+                        print(f"       🚀 Handled acceleration command for u/{author_name}")
+                        summon_responses.add(comment.id)
+                        summons_handled += 1
+                        continue
+                
+                # Generate regular conversational response
                 response_text, token_info = generate_conversational_response(
                     comment,
                     submission,

@@ -28,13 +28,15 @@ from config import (
     COMMENT_MILESTONES,
     MAX_REPLIES_PER_DAY,
     CROSSPOST_ENABLED,
+    ACCELERATION_ENABLED,
 )
 
-# Import handlers for reply, summon, ban, and crosspost features
+# Import handlers for reply, summon, ban, crosspost, and acceleration features
 from reply_handler import check_inbox_replies
 from summon_handler import check_for_summons
 from ban_handler import check_and_ban_negative_karma_users
 from crosspost_handler import check_and_crosspost
+from acceleration_handler import refresh_opted_in_users
 
 
 def load_state(state_file: str = "data/bot_state.json") -> dict:
@@ -663,7 +665,7 @@ def main():
         print(f"\n🔔 Phase 5: Checking for bot summons...")
         try:
             summons_handled, summon_tokens, summon_cost, state = check_for_summons(
-                subreddit, model, state, bot_username, args.dry_run
+                subreddit, model, state, bot_username, reddit=reddit, dry_run=args.dry_run
             )
             total_tokens += summon_tokens
             total_cost += summon_cost
@@ -697,6 +699,19 @@ def main():
             total_cost += crosspost_cost
         except Exception as e:
             print(f"  ❌ Error in crosspost handling: {e}")
+    
+    # Phase 8: Refresh acceleration flairs for opted-in users (weekly)
+    accel_refreshed = 0
+    if ACCELERATION_ENABLED:
+        print(f"\n🚀 Phase 8: Checking acceleration flair refreshes...")
+        try:
+            accel_refreshed, state = refresh_opted_in_users(
+                subreddit, reddit, state, args.dry_run
+            )
+            if accel_refreshed > 0:
+                print(f"  🔄 Refreshed {accel_refreshed} acceleration flair(s)")
+        except Exception as e:
+            print(f"  ❌ Error in acceleration refresh: {e}")
     
     # Update state
     state["last_check"] = datetime.utcnow().timestamp()

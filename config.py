@@ -82,3 +82,39 @@ CROSSPOST_MAX_HOURS_OLD = 48                # Don't crosspost posts older than t
 CROSSPOST_SKIP_CHANCE = 0.05                # 5% chance to skip a day (human-like)
 CROSSPOST_TIME_VARIATION_HOURS = (1, 5)     # Random hour range for daily crosspost (UTC)
 CROSSPOST_LOOKBACK_DAYS = 2                 # How far back to check target sub for dupes
+
+# ===== ACCELERATION FACTOR SETTINGS =====
+# Opt-in flair showing user's karma from pro-AI subreddits
+ACCELERATION_ENABLED = True                 # Kill switch for acceleration feature
+
+# Pro-AI subreddits to scan for karma (strongly pro-AI/singularity only)
+ACCELERATION_PRO_AI_SUBS = [
+    "accelerate",
+    "ProAI",
+    "TheMachineGod",
+    "DefendingAIArt",
+    "aiArt",
+    "aivideos",
+]
+
+# Scanning limits
+ACCELERATION_SCAN_LIMIT = 300               # Max posts/comments to scan per user
+ACCELERATION_REFRESH_DAYS = 7               # Min days between flair recalculations (opted-in)
+ACCELERATION_BACKGROUND_REFRESH_DAYS = 30   # Min days between background scans (non-opted-in)
+
+# Tier thresholds (percentages of high score)
+# Format: (min_percentage, tier_name)
+ACCELERATION_TIERS = [
+    (0.90, "Light-speed"),   # Top 10%
+    (0.75, "Hypersonic"),    # 75-90%
+    (0.50, "Supersonic"),    # 50-75%
+    (0.25, "Speeding"),      # 25-50%
+    (0.10, "Cruising"),      # 10-25%
+    (0.00, "Crawling"),      # 1-10% (positive)
+]
+ACCELERATION_ZERO_TIER = "Stationary"       # Tier for score <= 0
+
+# Moderation thresholds
+ACCELERATION_MODMAIL_THRESHOLD = -50        # Send modmail if karma below this
+ACCELERATION_AUTOBAN_ENABLED = False        # Auto-ban extremely negative users (OFF)
+ACCELERATION_AUTOBAN_THRESHOLD = -200       # Karma threshold for auto-ban
