@@ -106,35 +106,16 @@ def get_acceleration_tier(ratio: float) -> str:
     return ACCELERATION_TIERS[-1][1]
 
 
-def get_or_create_accel_template(subreddit) -> str | None:
+def get_first_flair_template(subreddit) -> str | None:
     """
-    Get or create the Acceleration flair template with custom colors.
-    Returns the template ID if found/created, None on error.
+    Get the first flair template ID (for consistent styling).
+    Returns the template ID if found, None on error.
     """
-    TEMPLATE_TEXT = "Acceleration"  # Template identifier
-    
     try:
-        # Check if template already exists
         for template in subreddit.flair.templates:
-            if template.get("text", "").startswith("Acceleration"):
-                return template["id"]
-        
-        # Create new template with desired colors
-        subreddit.flair.templates.add(
-            text=TEMPLATE_TEXT,
-            text_editable=True,  # Allow custom text per user
-            background_color="#EAEDEF",
-            text_color="dark"
-        )
-        
-        # Get the newly created template ID
-        for template in subreddit.flair.templates:
-            if template.get("text", "").startswith("Acceleration"):
-                return template["id"]
-                
+            return template["id"]
     except Exception as e:
-        print(f"    ⚠️ Could not get/create flair template: {e}")
-    
+        print(f"    ⚠️ Could not get flair template: {e}")
     return None
 
 
@@ -185,8 +166,8 @@ def update_user_flair(subreddit, username: str, tier: str | None, remove: bool =
                 # No existing flair
                 new_flair = accel_text
             
-            # Get or create the template with colors
-            template_id = get_or_create_accel_template(subreddit)
+            # Get the first template for consistent styling
+            template_id = get_first_flair_template(subreddit)
             
             if template_id:
                 # Use template for colors
