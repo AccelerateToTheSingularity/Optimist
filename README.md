@@ -14,6 +14,12 @@ Multi-function Reddit bot for r/accelerate community moderation.
 
 Runs on GitHub Actions every 3 minutes, 24/7.
 
+## Stats Dashboard
+
+**Live stats:** [https://acceleratetothesingularity.github.io/Optimist/](https://acceleratetothesingularity.github.io/Optimist/)
+
+Updated weekly (Mondays at midnight UTC).
+
 ## Setup
 
 ### 1. Fork this repository
