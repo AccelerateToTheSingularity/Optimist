@@ -189,13 +189,29 @@ def generate_tldr(content: str, title: str, gemini_model) -> tuple[str, dict]:
     return response.text.strip(), token_info
 
 
-def get_parent_chain(comment, max_parents: int = 6) -> list:
+def get_parent_chain(comment, comment_lookup=None, max_parents: int = 6) -> list:
     """Get parent comments up to max_parents levels."""
     parents = []
     current = comment
     while len(parents) < max_parents:
         try:
-            parent = current.parent()
+            # Use lookup if available to avoid API call
+            parent = None
+            if comment_lookup and hasattr(current, 'parent_id'):
+                parent_id = current.parent_id
+                if parent_id.startswith('t3_'):
+                    break  # Parent is submission
+
+                # Extract ID part (t1_xyz -> xyz)
+                pid = parent_id.split('_')[1] if '_' in parent_id else parent_id
+
+                if pid in comment_lookup:
+                    parent = comment_lookup[pid]
+
+            # Fallback to API if not found in lookup
+            if parent is None:
+                parent = current.parent()
+
             # Check if parent is a comment (not the submission)
             if hasattr(parent, 'body') and parent.body and parent.body != '[deleted]':
                 parents.append(parent)
@@ -207,7 +223,7 @@ def get_parent_chain(comment, max_parents: int = 6) -> list:
     return list(reversed(parents))  # Oldest first
 
 
-def generate_comment_tldr(comment, submission, gemini_model) -> tuple[str, dict]:
+def generate_comment_tldr(comment, submission, gemini_model, comment_lookup=None) -> tuple[str, dict]:
     """Generate TLDR for a comment with context from parents and submission."""
     word_count = count_words(comment.body)
     max_words = calculate_max_tldr_words(word_count)
@@ -222,7 +238,7 @@ def generate_comment_tldr(comment, submission, gemini_model) -> tuple[str, dict]
         context_parts.append(f"**Original Post (snippet):** {snippet}")
     
     # Add parent comments
-    parents = get_parent_chain(comment)
+    parents = get_parent_chain(comment, comment_lookup)
     if parents:
         context_parts.append("**Parent Comments (for context):**")
         for i, parent in enumerate(parents, 1):
@@ -582,8 +598,10 @@ def main():
             
             # Fetch comments
             submission.comments.replace_more(limit=0)
+            all_comments = submission.comments.list()
+            comment_lookup = {c.id: c for c in all_comments}
             
-            for comment in submission.comments.list():
+            for comment in all_comments:
                 # Skip if already processed
                 if comment.id in processed_comments:
                     continue
@@ -614,7 +632,7 @@ def main():
                 
                 try:
                     # Generate TLDR for the comment with context
-                    tldr_text, token_info = generate_comment_tldr(comment, submission, model)
+                    tldr_text, token_info = generate_comment_tldr(comment, submission, model, comment_lookup)
                     
                     # Post reply to the comment
                     reply_text = f"**Comment TLDR:** {tldr_text}"
