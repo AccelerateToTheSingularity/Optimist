@@ -179,18 +179,6 @@ def check_inbox_replies(
                 replied_to.add(item.id)
                 continue
             
-            # Only respond to DIRECT replies to bot's comments (not nested replies in thread)
-            try:
-                parent = item.parent()
-                # If the parent author isn't the bot, skip this (it's a nested reply)
-                if not hasattr(parent, 'author') or not parent.author or parent.author.name != bot_username:
-                    replied_to.add(item.id)  # Mark as processed so we don't check again
-                    continue
-            except Exception as e:
-                # If we can't get parent, skip to be safe
-                print(f"    ⚠️ Could not verify parent for comment {item.id}: {e}")
-                continue
-            
             # Skip if hostile
             if is_hostile_comment(item.body):
                 print(f"    ⏭️ Skipping hostile comment from u/{author_name}")
