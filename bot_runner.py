@@ -23,21 +23,14 @@ from llm_client import (
 )
 from runtime_settings import apply_runtime_settings, resolve_runtime_settings
 
-# Import configuration from centralized config
+# Import configuration (use config.* at runtime so BOT_PROFILE overrides apply)
+import config
 from config import (
-    SUBREDDIT,
-    POST_TLDR_ENABLED,
-    COMMENT_TLDR_ENABLED,
-    COMMENT_SUMMARY_ENABLED,
-    POST_WORD_THRESHOLD,
     COMMENT_WORD_THRESHOLD,
-    MAX_TLDR_PER_RUN,
     MAX_TLDR_PER_DAY,
     MAX_AGE_HOURS,
     COMMENT_MILESTONES,
     MAX_REPLIES_PER_DAY,
-    CROSSPOST_ENABLED,
-    ACCELERATION_ENABLED,
 )
 
 # Import handlers for reply, summon, ban, crosspost, and acceleration features
@@ -457,7 +450,7 @@ def main():
     can_proceed, state = check_daily_limit(state)
     
     # Get subreddit
-    subreddit = reddit.subreddit(SUBREDDIT)
+    subreddit = reddit.subreddit(config.SUBREDDIT)
     
     # Check posts for TLDRs
     tldrs_generated = 0
@@ -468,12 +461,12 @@ def main():
         limit = runtime.post_scan_limit
     else:
         limit = 10 if last_check is None else 50
-    print(f"🔍 Checking last {limit} posts on r/{SUBREDDIT}...")
+    print(f"🔍 Checking last {limit} posts on r/{config.SUBREDDIT}...")
     
     posts_to_check = list(subreddit.new(limit=limit))
     
     # Phase 1: Generate TLDRs for long posts
-    if can_proceed and POST_TLDR_ENABLED:
+    if can_proceed and config.POST_TLDR_ENABLED:
         for submission in posts_to_check:
             # Skip if too old (older than MAX_AGE_HOURS)
             if is_too_old(submission.created_utc):
@@ -489,8 +482,8 @@ def main():
             
             # Check word count
             word_count = count_words(submission.selftext)
-            if word_count < POST_WORD_THRESHOLD:
-                print(f"  📝 Post {submission.id}: {word_count} words (below {POST_WORD_THRESHOLD} threshold)")
+            if word_count < config.POST_WORD_THRESHOLD:
+                print(f"  📝 Post {submission.id}: {word_count} words (below {config.POST_WORD_THRESHOLD} threshold)")
                 continue
             
             print(f"  ✨ Post {submission.id}: {word_count} words - Generating TLDR...")
@@ -518,8 +511,8 @@ def main():
                 total_cost += token_info["cost"]
                 
                 # Only 1 TLDR per run
-                if tldrs_generated >= MAX_TLDR_PER_RUN:
-                    print(f"  ⏸️ Reached max TLDRs per run ({MAX_TLDR_PER_RUN})")
+                if tldrs_generated >= config.MAX_TLDR_PER_RUN:
+                    print(f"  ⏸️ Reached max TLDRs per run ({config.MAX_TLDR_PER_RUN})")
                     break
                     
             except LLMQuotaExhausted as e:
@@ -531,7 +524,7 @@ def main():
     # Phase 2: Check for comment summaries (if we haven't hit daily limit)
     can_proceed, state = check_daily_limit(state)
     
-    if can_proceed and COMMENT_SUMMARY_ENABLED:
+    if can_proceed and config.COMMENT_SUMMARY_ENABLED:
         print(f"\n💬 Checking posts for comment summaries...")
         
         for submission in posts_to_check:
@@ -618,7 +611,7 @@ def main():
     # Phase 3: Generate TLDRs for long individual comments
     can_proceed, state = check_daily_limit(state)
     
-    if can_proceed and COMMENT_TLDR_ENABLED:
+    if can_proceed and config.COMMENT_TLDR_ENABLED:
         print(f"\n📝 Checking for long comments to TLDR...")
         
         for submission in posts_to_check:
@@ -627,7 +620,7 @@ def main():
                 continue
             
             # Already hit limit for this run?
-            if tldrs_generated >= MAX_TLDR_PER_RUN:
+            if tldrs_generated >= config.MAX_TLDR_PER_RUN:
                 break
             
             # Fetch comments
@@ -681,15 +674,15 @@ def main():
                     total_cost += token_info["cost"]
                     
                     # Only 1 TLDR per run
-                    if tldrs_generated >= MAX_TLDR_PER_RUN:
-                        print(f"  ⏸️ Reached max TLDRs per run ({MAX_TLDR_PER_RUN})")
+                    if tldrs_generated >= config.MAX_TLDR_PER_RUN:
+                        print(f"  ⏸️ Reached max TLDRs per run ({config.MAX_TLDR_PER_RUN})")
                         break
                         
                 except Exception as e:
                     print(f"     ❌ Error: {e}")
             
             # Break outer loop if we hit limit
-            if tldrs_generated >= MAX_TLDR_PER_RUN:
+            if tldrs_generated >= config.MAX_TLDR_PER_RUN:
                 break
     
     # Phase 4: Check inbox for replies to bot's comments
@@ -753,7 +746,7 @@ def main():
     crossposts_made = 0
     crosspost_tokens = 0
     crosspost_cost = 0.0
-    if CROSSPOST_ENABLED:
+    if config.CROSSPOST_ENABLED:
         try:
             crossposts_made, crosspost_tokens, crosspost_cost, state = check_and_crosspost(
                 reddit, model, state, args.dry_run
@@ -769,7 +762,7 @@ def main():
     
     # Phase 8: Refresh acceleration flairs for opted-in users (weekly)
     accel_refreshed = 0
-    if ACCELERATION_ENABLED:
+    if config.ACCELERATION_ENABLED:
         print(f"\n🚀 Phase 8: Checking acceleration flair refreshes...")
         try:
             accel_refreshed, state = refresh_opted_in_users(
@@ -782,7 +775,7 @@ def main():
     
     # Phase 9: Process background scan queue (1 user per cycle to avoid API limits)
     queue_scanned = 0
-    if ACCELERATION_ENABLED:
+    if config.ACCELERATION_ENABLED:
         try:
             queue_scanned, state = process_scan_queue(
                 subreddit, reddit, state, args.dry_run

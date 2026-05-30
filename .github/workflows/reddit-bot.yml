@@ -68,7 +68,7 @@ jobs:
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://api.minimax.io/v1' }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'MiniMax-M2.7' }}
           BOT_PROFILE: ${{ github.event.inputs.bot_profile || vars.BOT_PROFILE || '' }}
-          BOT_SUBREDDIT: ${{ github.event.inputs.subreddit || vars.BOT_SUBREDDIT || '' }}
+          BOT_SUBREDDIT: ${{ github.event.inputs.subreddit || vars.BOT_SUBREDDIT }}
           BOT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
         run: |
           ARGS=""
@@ -82,7 +82,7 @@ jobs:
           git config user.email "reddit-bot@github.com"
           git add data/bot_state.json data/stats.json
           git diff --quiet --cached || git commit -m "📊 Update bot state [skip ci]"
-          git pull --rebase
+          git pull origin master --no-rebase
           git push
       
       - name: Send failure notification

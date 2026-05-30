@@ -28,6 +28,13 @@ def _env_int(name: str, default: int | None = None) -> int | None:
     return int(raw)
 
 
+def _env_str(name: str, default: str) -> str:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip()
+
+
 PROFILE_PRESETS: dict[str, dict] = {
     "proai_limited": {
         "subreddit": "ProAI",
@@ -92,10 +99,10 @@ class RuntimeSettings:
 
 
 def resolve_runtime_settings(bot_username: str | None = None) -> RuntimeSettings:
-    profile = os.environ.get("BOT_PROFILE", "").strip().lower()
+    profile = _env_str("BOT_PROFILE", "").lower()
     preset = PROFILE_PRESETS.get(profile, {})
 
-    subreddit = os.environ.get("BOT_SUBREDDIT", preset.get("subreddit", config.SUBREDDIT)).strip()
+    subreddit = _env_str("BOT_SUBREDDIT", preset.get("subreddit", config.SUBREDDIT))
 
     settings = RuntimeSettings(
         profile=profile,
@@ -133,9 +140,6 @@ def resolve_runtime_settings(bot_username: str | None = None) -> RuntimeSettings
         value = _env_bool(env_name)
         if value is not None:
             setattr(settings, attr, value)
-
-    if subreddit_env := os.environ.get("BOT_SUBREDDIT"):
-        settings.subreddit = subreddit_env.strip()
 
     if (max_llm := _env_int("BOT_MAX_LLM_CALLS_PER_RUN")) is not None:
         settings.max_llm_calls_per_run = max_llm

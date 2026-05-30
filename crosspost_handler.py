@@ -15,8 +15,8 @@ Features:
 import random
 from datetime import datetime, date, timedelta
 
+import config
 from config import (
-    CROSSPOST_ENABLED,
     CROSSPOST_SOURCE_SUB,
     CROSSPOST_TARGET_SUB,
     CROSSPOST_MAX_PER_DAY,
@@ -406,7 +406,7 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
     total_tokens = 0
     total_cost = 0.0
     
-    if not CROSSPOST_ENABLED:
+    if not config.CROSSPOST_ENABLED:
         return 0, 0, 0.0, state
     
     print(f"\n🔄 Phase 7: Checking crosspost to r/{CROSSPOST_TARGET_SUB}...")

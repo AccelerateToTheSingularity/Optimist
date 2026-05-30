@@ -26,6 +26,15 @@ class TestRuntimeSettings(unittest.TestCase):
         self.assertEqual(settings.max_llm_calls_per_run, 1)
         self.assertIn(r"\bu/random\b", settings.extra_summon_patterns)
 
+    def test_empty_bot_subreddit_env_uses_preset(self):
+        with patch.dict(
+            os.environ,
+            {"BOT_PROFILE": "proai_limited", "BOT_SUBREDDIT": ""},
+            clear=False,
+        ):
+            settings = resolve_runtime_settings()
+        self.assertEqual(settings.subreddit, "ProAI")
+
     def test_apply_updates_config_module(self):
         with patch.dict(os.environ, {"BOT_PROFILE": "proai_limited"}, clear=False):
             settings = resolve_runtime_settings(bot_username="random")
