@@ -6,8 +6,8 @@ Handles responding when users explicitly summon the bot anywhere in r/accelerate
 import re
 from datetime import datetime
 
+import config
 from config import (
-    SUBREDDIT,
     MAX_REPLIES_PER_RUN,
     MAX_AGE_HOURS,
     SUMMON_PATTERNS,
@@ -16,7 +16,6 @@ from config import (
     SAME_USER_COOLDOWN_HOURS,
     SAME_USER_REPLIES_BEFORE_COOLDOWN,
     MOD_CACHE_REFRESH_DAYS,
-    ACCELERATION_ENABLED,
 )
 from persona import generate_conversational_response, generate_post_summon_response
 from acceleration_handler import (
@@ -88,6 +87,8 @@ def is_likely_bot(author_name: str | None) -> bool:
         return True
     
     name_lower = author_name.lower()
+    if name_lower.endswith("bot") or name_lower.endswith("-mod") or "automod" in name_lower:
+        return True
     for pattern in BOT_INDICATORS:
         if re.search(pattern.lower(), name_lower):
             return True
@@ -149,7 +150,7 @@ def check_for_summons(
     summon_responses = set(state.get("summon_responses", []))
     recent_user_replies = state.get("recent_user_replies", {})
     
-    print(f"  🔔 Scanning for bot summons in r/{SUBREDDIT}...")
+    print(f"  🔔 Scanning for bot summons in r/{subreddit.display_name}...")
     
     # Check comments
     try:
@@ -223,7 +224,7 @@ def check_for_summons(
             author_name = comment.author.name if comment.author else None
             
             # Queue commenter for background scan (processed 1 per cycle)
-            if ACCELERATION_ENABLED and author_name and not is_likely_bot(author_name):
+            if config.ACCELERATION_ENABLED and author_name and not is_likely_bot(author_name):
                 state = queue_background_scan(author_name, state)
             
             # Check if this is a summon
@@ -258,7 +259,7 @@ def check_for_summons(
                 submission = comment.submission
                 
                 # Check if this is an acceleration command first
-                if ACCELERATION_ENABLED and reddit:
+                if config.ACCELERATION_ENABLED and reddit:
                     accel_response, state = handle_acceleration_command(
                         comment, subreddit, reddit, gemini_model, state, dry_run
                     )

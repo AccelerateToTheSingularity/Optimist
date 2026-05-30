@@ -6,8 +6,8 @@ Handles responding to users who reply to the bot's comments.
 import re
 from datetime import datetime
 
+import config
 from config import (
-    SUBREDDIT,
     MAX_REPLIES_PER_RUN,
     MAX_AGE_HOURS,
     HOSTILE_PATTERNS,
@@ -15,7 +15,6 @@ from config import (
     SAME_USER_COOLDOWN_HOURS,
     SAME_USER_REPLIES_BEFORE_COOLDOWN,
     MOD_CACHE_REFRESH_DAYS,
-    ACCELERATION_ENABLED,
 )
 from persona import generate_conversational_response
 from acceleration_handler import handle_acceleration_command
@@ -165,7 +164,7 @@ def check_inbox_replies(
                 continue
             
             # Skip if not from our subreddit
-            if item.subreddit.display_name.lower() != SUBREDDIT.lower():
+            if item.subreddit.display_name.lower() != config.SUBREDDIT.lower():
                 continue
             
             # Skip deleted comments
@@ -203,7 +202,7 @@ def check_inbox_replies(
                 subreddit = item.subreddit
                 
                 # Check if this is an acceleration command first
-                if ACCELERATION_ENABLED:
+                if config.ACCELERATION_ENABLED:
                     accel_response, state = handle_acceleration_command(
                         item, subreddit, reddit, gemini_model, state, dry_run
                     )

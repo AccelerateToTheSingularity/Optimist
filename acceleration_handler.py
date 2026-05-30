@@ -6,8 +6,8 @@ Manages opt-in flair showing user's karma from pro-AI subreddits.
 import re
 from datetime import datetime
 
+import config
 from config import (
-    ACCELERATION_ENABLED,
     ACCELERATION_PRO_AI_SUBS,
     ACCELERATION_SCAN_LIMIT,
     ACCELERATION_BACKGROUND_SCAN_LIMIT,
@@ -278,7 +278,7 @@ def handle_acceleration_command(
     Returns:
         Tuple of (response_text or None, updated_state)
     """
-    if not ACCELERATION_ENABLED:
+    if not config.ACCELERATION_ENABLED:
         return None, state
     
     author_name = comment.author.name if comment.author else None
@@ -408,7 +408,7 @@ def refresh_opted_in_users(
     Returns:
         Tuple of (users_updated, updated_state)
     """
-    if not ACCELERATION_ENABLED:
+    if not config.ACCELERATION_ENABLED:
         return 0, state
     
     accel_state = state.get("acceleration", {})
@@ -476,7 +476,7 @@ def queue_background_scan(username: str, state: dict) -> dict:
     Returns:
         Updated state
     """
-    if not ACCELERATION_ENABLED:
+    if not config.ACCELERATION_ENABLED:
         return state
     
     # Initialize acceleration state if needed
@@ -536,7 +536,7 @@ def process_scan_queue(
     Returns:
         Tuple of (users_scanned, updated_state)
     """
-    if not ACCELERATION_ENABLED:
+    if not config.ACCELERATION_ENABLED:
         return 0, state
     
     accel_state = state.get("acceleration", {})
