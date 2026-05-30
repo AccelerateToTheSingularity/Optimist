@@ -34,7 +34,7 @@ Go to Settings → Secrets and variables → Actions:
 | `REDDIT_CLIENT_SECRET` | Reddit app client secret |
 | `REDDIT_USERNAME` | Bot Reddit username |
 | `REDDIT_PASSWORD` | Bot Reddit password |
-| `GEMINI_API_KEY` | Google Gemini API key |
+| `OPENAI_API_KEY` | LLM API key (MiniMax via OpenAI-compatible API) |
 | `EMAIL_USERNAME` | Gmail for notifications (optional) |
 | `EMAIL_PASSWORD` | Gmail app password (optional) |
 | `NOTIFICATION_EMAIL` | Email to receive failure alerts (optional) |
@@ -50,7 +50,7 @@ Edit `config.py` to customize all settings.
 ## Costs
 
 - **GitHub Actions**: Free for public repos
-- **Gemini API**: ~$0.0001 per generation
+- **LLM API (MiniMax)**: billed per provider usage; see [MiniMax pricing](https://platform.minimax.io/)
 
 ## License
 

@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'bot_runner.py'
+      - 'llm_client.py'
       - 'config.py'
       - 'persona.py'
       - 'reply_handler.py'
@@ -14,7 +15,26 @@ on:
   schedule:
     - cron: '*/3 * * * *'  # Every 3 minutes (bot runs)
     - cron: '0 0 * * 1'    # Weekly on Monday at midnight UTC (stats page)
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      bot_profile:
+        description: 'Runtime profile (proai_limited = r/ProAI only, max 1 LLM call/run)'
+        required: false
+        default: 'proai_limited'
+        type: choice
+        options:
+          - ''
+          - proai_limited
+      dry_run:
+        description: 'Log actions only; do not post to Reddit'
+        required: false
+        default: true
+        type: boolean
+      subreddit:
+        description: 'Override target subreddit (default from profile)'
+        required: false
+        default: 'ProAI'
+        type: string
 
 permissions:
   contents: write
@@ -44,8 +64,17 @@ jobs:
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
           REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
           REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python bot_runner.py
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://api.minimax.io/v1' }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'MiniMax-M2.7' }}
+          BOT_PROFILE: ${{ github.event.inputs.bot_profile || vars.BOT_PROFILE || '' }}
+          BOT_SUBREDDIT: ${{ github.event.inputs.subreddit || vars.BOT_SUBREDDIT || '' }}
+          BOT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
+        run: |
+          ARGS=""
+          if [ "$BOT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$BOT_PROFILE" ]; then ARGS="$ARGS --profile $BOT_PROFILE"; fi
+          python bot_runner.py $ARGS
       
       - name: Commit state changes
         run: |

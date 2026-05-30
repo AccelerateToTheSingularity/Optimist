@@ -15,7 +15,13 @@ import argparse
 from datetime import datetime, date
 
 import praw
-import google.generativeai as genai
+from llm_client import (
+    LLMQuotaExhausted,
+    create_llm_model,
+    resolve_api_key,
+    wrap_with_rate_limit,
+)
+from runtime_settings import apply_runtime_settings, resolve_runtime_settings
 
 # Import configuration from centralized config
 from config import (
@@ -394,13 +400,23 @@ def is_too_old(created_utc: float) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Reddit Mod Bot for GitHub Actions")
     parser.add_argument("--dry-run", action="store_true", help="Don't post, just log what would happen")
+    parser.add_argument(
+        "--profile",
+        choices=["proai_limited"],
+        help="Preset runtime profile (also set via BOT_PROFILE env)",
+    )
     args = parser.parse_args()
+
+    if args.profile and not os.environ.get("BOT_PROFILE"):
+        os.environ["BOT_PROFILE"] = args.profile
     
     print(f"🚀 Reddit Mod Bot starting at {datetime.utcnow().isoformat()}")
     
     # Check required environment variables
-    required_vars = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD", "GEMINI_API_KEY"]
+    required_vars = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD"]
     missing = [v for v in required_vars if not os.environ.get(v)]
+    if not resolve_api_key():
+        missing.append("OPENAI_API_KEY (or LLM_API_KEY)")
     if missing:
         print(f"❌ Missing required environment variables: {', '.join(missing)}")
         sys.exit(1)
@@ -415,11 +431,20 @@ def main():
     )
     bot_username = reddit.user.me().name
     print(f"✅ Connected to Reddit as u/{bot_username}")
+
+    runtime = resolve_runtime_settings(bot_username=bot_username)
+    apply_runtime_settings(runtime)
+    print(f"⚙️ Runtime: {runtime.describe()}")
+    if args.dry_run:
+        print("🧪 DRY RUN — no posts or comments will be published")
     
-    # Initialize Gemini
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.0-flash")
-    print("✅ Gemini API initialized")
+    # Initialize LLM (OpenAI-compatible; default MiniMax)
+    model = create_llm_model()
+    if runtime.max_llm_calls_per_run is not None:
+        model = wrap_with_rate_limit(model, runtime.max_llm_calls_per_run)
+        print(f"✅ LLM API initialized (max {runtime.max_llm_calls_per_run} call(s) this run)")
+    else:
+        print("✅ LLM API initialized")
     
     # Load state
     state = load_state()
@@ -439,7 +464,10 @@ def main():
     total_tokens = 0
     total_cost = 0.0
     
-    limit = 10 if last_check is None else 50
+    if runtime.post_scan_limit is not None:
+        limit = runtime.post_scan_limit
+    else:
+        limit = 10 if last_check is None else 50
     print(f"🔍 Checking last {limit} posts on r/{SUBREDDIT}...")
     
     posts_to_check = list(subreddit.new(limit=limit))
@@ -494,6 +522,9 @@ def main():
                     print(f"  ⏸️ Reached max TLDRs per run ({MAX_TLDR_PER_RUN})")
                     break
                     
+            except LLMQuotaExhausted as e:
+                print(f"     ⏸️ {e}")
+                break
             except Exception as e:
                 print(f"     ❌ Error: {e}")
     
@@ -665,7 +696,7 @@ def main():
     replies_sent = 0
     can_reply, state = check_daily_reply_limit(state)
     
-    if can_reply:
+    if can_reply and runtime.inbox_replies_enabled:
         print(f"\n📬 Phase 4: Checking inbox for replies to bot comments...")
         try:
             replies_sent, reply_tokens, reply_cost, state = check_inbox_replies(
@@ -675,14 +706,18 @@ def main():
             total_cost += reply_cost
             if replies_sent > 0:
                 print(f"  💬 Sent {replies_sent} conversational replies")
+        except LLMQuotaExhausted as e:
+            print(f"  ⏸️ {e}")
         except Exception as e:
             print(f"  ❌ Error in reply handling: {e}")
+    elif not runtime.inbox_replies_enabled:
+        print("\n📬 Phase 4: Inbox replies disabled for this profile")
     
     # Phase 5: Check for bot summons in the subreddit
     summons_handled = 0
     can_reply, state = check_daily_reply_limit(state)
     
-    if can_reply:
+    if can_reply and runtime.summons_enabled:
         print(f"\n🔔 Phase 5: Checking for bot summons...")
         try:
             summons_handled, summon_tokens, summon_cost, state = check_for_summons(
@@ -692,20 +727,27 @@ def main():
             total_cost += summon_cost
             if summons_handled > 0:
                 print(f"  🎯 Responded to {summons_handled} summons")
+        except LLMQuotaExhausted as e:
+            print(f"  ⏸️ {e}")
         except Exception as e:
             print(f"  ❌ Error in summon handling: {e}")
+    elif not runtime.summons_enabled:
+        print("\n🔔 Phase 5: Summons disabled for this profile")
     
     # Phase 6: Auto-ban users with excessive negative karma
     users_banned = 0
-    print(f"\n🔨 Phase 6: Checking for negative karma users to ban...")
-    try:
-        users_banned, state = check_and_ban_negative_karma_users(
-            subreddit, state, args.dry_run
-        )
-        if users_banned > 0:
-            print(f"  ⛔ Banned {users_banned} user(s)")
-    except Exception as e:
-        print(f"  ❌ Error in ban handling: {e}")
+    if runtime.ban_phase_enabled:
+        print(f"\n🔨 Phase 6: Checking for negative karma users to ban...")
+        try:
+            users_banned, state = check_and_ban_negative_karma_users(
+                subreddit, state, args.dry_run
+            )
+            if users_banned > 0:
+                print(f"  ⛔ Banned {users_banned} user(s)")
+        except Exception as e:
+            print(f"  ❌ Error in ban handling: {e}")
+    else:
+        print("\n🔨 Phase 6: Ban checks disabled for this profile")
     
     # Phase 7: Crosspost top AI posts to r/ProAI
     crossposts_made = 0
@@ -718,8 +760,12 @@ def main():
             )
             total_tokens += crosspost_tokens
             total_cost += crosspost_cost
+        except LLMQuotaExhausted as e:
+            print(f"  ⏸️ {e}")
         except Exception as e:
             print(f"  ❌ Error in crosspost handling: {e}")
+    else:
+        print("\n🔄 Phase 7: Crosspost disabled for this profile")
     
     # Phase 8: Refresh acceleration flairs for opted-in users (weekly)
     accel_refreshed = 0
