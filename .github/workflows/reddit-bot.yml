@@ -36,6 +36,11 @@ on:
         required: false
         default: ''
         type: string
+      test_comment:
+        description: 'Post a test comment to verify bot functionality'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -75,9 +80,11 @@ jobs:
           BOT_PROFILE: ${{ github.event.inputs.bot_profile || vars.BOT_PROFILE || '' }}
           BOT_SUBREDDIT: ${{ github.event.inputs.subreddit || vars.BOT_SUBREDDIT }}
           BOT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
+          BOT_TEST_COMMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test_comment || 'false' }}
         run: |
           ARGS=""
           if [ "$BOT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "$BOT_TEST_COMMENT" = "true" ]; then ARGS="$ARGS --test-comment"; fi
           if [ -n "$BOT_PROFILE" ]; then ARGS="$ARGS --profile $BOT_PROFILE"; fi
           python bot_runner.py $ARGS
       
