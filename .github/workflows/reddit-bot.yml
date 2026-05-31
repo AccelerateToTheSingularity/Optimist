@@ -19,9 +19,9 @@ on:
   workflow_dispatch:
     inputs:
       bot_profile:
-        description: 'Runtime profile (proai_limited = r/ProAI only, max 1 LLM call/run)'
+        description: 'Runtime profile (leave empty for default r/accelerate)'
         required: false
-        default: 'proai_limited'
+        default: ''
         type: choice
         options:
           - ''
@@ -32,9 +32,9 @@ on:
         default: true
         type: boolean
       subreddit:
-        description: 'Override target subreddit (default from profile)'
+        description: 'Override target subreddit (default: r/accelerate)'
         required: false
-        default: 'ProAI'
+        default: ''
         type: string
 
 permissions:
