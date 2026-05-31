@@ -23,6 +23,9 @@ from llm_client import (
 )
 from runtime_settings import apply_runtime_settings, resolve_runtime_settings
 
+# Bot version for User-Agent compliance with Reddit 2026 requirements
+BOT_VERSION = "2.0"
+
 # Import configuration (use config.* at runtime so BOT_PROFILE overrides apply)
 import config
 from config import (
@@ -393,6 +396,7 @@ def is_too_old(created_utc: float) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Reddit Mod Bot for GitHub Actions")
     parser.add_argument("--dry-run", action="store_true", help="Don't post, just log what would happen")
+    parser.add_argument("--test-comment", action="store_true", help="Post a test comment to verify bot functionality")
     parser.add_argument(
         "--profile",
         choices=["proai_limited"],
@@ -406,7 +410,12 @@ def main():
     print(f"🚀 Reddit Mod Bot starting at {datetime.utcnow().isoformat()}")
     
     # Check required environment variables
-    required_vars = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD"]
+    # Refresh token auth (preferred) or password auth (legacy fallback)
+    refresh_token = os.environ.get("REDDIT_REFRESH_TOKEN")
+    if refresh_token:
+        required_vars = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"]
+    else:
+        required_vars = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD"]
     missing = [v for v in required_vars if not os.environ.get(v)]
     if not resolve_api_key():
         missing.append("OPENAI_API_KEY (or LLM_API_KEY)")
@@ -414,16 +423,47 @@ def main():
         print(f"❌ Missing required environment variables: {', '.join(missing)}")
         sys.exit(1)
     
-    # Initialize Reddit
-    reddit = praw.Reddit(
-        client_id=os.environ["REDDIT_CLIENT_ID"],
-        client_secret=os.environ["REDDIT_CLIENT_SECRET"],
-        username=os.environ["REDDIT_USERNAME"],
-        password=os.environ["REDDIT_PASSWORD"],
-        user_agent="Reddit Mod Bot v1.0 (GitHub Actions)"
-    )
+    # Initialize Reddit with proper 2026 API compliance headers
+    # Format: <platform>:<app ID>:<version> (by /u/<reddit username>)
+    reddit_app_name = os.environ.get("REDDIT_APP_NAME", "OptimistPrimeModBot")
+    user_agent = f"script:{reddit_app_name}:v{BOT_VERSION} (by /u/stealthispost)"
+    
+    if refresh_token:
+        # Refresh token auth (preferred — works with 2FA, no password needed)
+        reddit = praw.Reddit(
+            client_id=os.environ["REDDIT_CLIENT_ID"],
+            client_secret=os.environ["REDDIT_CLIENT_SECRET"],
+            refresh_token=refresh_token,
+            user_agent=user_agent
+        )
+        print(f"✅ Connected to Reddit via refresh token")
+    else:
+        # Password auth (legacy fallback — may fail if 2FA is enabled)
+        print("⚠️  Using password auth. Consider switching to refresh token auth.")
+        reddit = praw.Reddit(
+            client_id=os.environ["REDDIT_CLIENT_ID"],
+            client_secret=os.environ["REDDIT_CLIENT_SECRET"],
+            username=os.environ["REDDIT_USERNAME"],
+            password=os.environ["REDDIT_PASSWORD"],
+            user_agent=user_agent
+        )
     bot_username = reddit.user.me().name
     print(f"✅ Connected to Reddit as u/{bot_username}")
+
+    # Handle test comment mode
+    if args.test_comment:
+        print(f"🧪 Posting test comment to verify bot functionality...")
+        try:
+            submission = reddit.submission(url="https://www.reddit.com/r/accelerate/comments/1tsr1q0/polyrange_contaminationresistant_offensiveai/")
+            test_comment = "Test comment from u/OptimistPrime_AI_Bot - verifying bot functionality with proper 2026 API compliance headers."
+            comment = submission.reply(test_comment)
+            print(f"✅ Test comment posted successfully: {comment.permalink}")
+            print(f"   Comment ID: {comment.id}")
+            print(f"   Posted as: u/{reddit.user.me().name}")
+        except Exception as e:
+            print(f"❌ Failed to post test comment: {e}")
+            sys.exit(1)
+        sys.exit(0)
 
     runtime = resolve_runtime_settings(bot_username=bot_username)
     apply_runtime_settings(runtime)

@@ -24,7 +24,28 @@ Updated weekly (Mondays at midnight UTC).
 
 ### 1. Fork this repository
 
-### 2. Add GitHub Secrets
+### 2. Register a Reddit App
+
+Go to https://www.reddit.com/prefs/apps/ and create a **web app**:
+- Name: `OptimistPrimeModBot`
+- Redirect URI: `http://localhost:8080`
+
+Note the **client ID** (under the app name) and **client secret**.
+
+### 3. Get a Refresh Token
+
+Run the auth script locally to authorize the bot account:
+
+```bash
+set REDDIT_CLIENT_ID=your_client_id
+set REDDIT_CLIENT_SECRET=your_client_secret
+py obtain_refresh_token.py
+```
+
+This opens a Reddit page. Log in as `u/OptimistPrime_AI_Bot` and click "Allow".
+The script prints a refresh token — copy it.
+
+### 4. Add GitHub Secrets
 
 Go to Settings → Secrets and variables → Actions:
 
@@ -32,20 +53,38 @@ Go to Settings → Secrets and variables → Actions:
 |-------------|-------------|
 | `REDDIT_CLIENT_ID` | Reddit app client ID |
 | `REDDIT_CLIENT_SECRET` | Reddit app client secret |
-| `REDDIT_USERNAME` | Bot Reddit username |
-| `REDDIT_PASSWORD` | Bot Reddit password |
+| `REDDIT_REFRESH_TOKEN` | Refresh token from step 3 |
+| `REDDIT_APP_NAME` | App name for User-Agent (default: OptimistPrimeModBot) |
 | `OPENAI_API_KEY` | LLM API key (MiniMax via OpenAI-compatible API) |
 | `EMAIL_USERNAME` | Gmail for notifications (optional) |
 | `EMAIL_PASSWORD` | Gmail app password (optional) |
 | `NOTIFICATION_EMAIL` | Email to receive failure alerts (optional) |
 
-### 3. Enable Actions
+### 5. Enable Actions
 
 Go to the Actions tab and enable workflows.
 
 ## Configuration
 
 Edit `config.py` to customize all settings.
+
+## API Compliance (2026)
+
+This bot complies with Reddit's 2026 automated account transparency requirements:
+
+- **User-Agent Format**: Uses the required format: `<platform>:<app ID>:<version> (by /u/<reddit username>)`
+- **Registered App**: Uses the "Optimist Prime Mod Bot" registered under u/stealthispost
+- **[App] Label**: Bot posts show the [App] label to identify as automated content
+
+To test the bot's API compliance, you can run:
+```bash
+python bot_runner.py --test-comment
+```
+
+This will post a test comment in the specified Reddit thread to verify:
+1. Bot can authenticate as u/OptimistPrime_AI_Bot
+2. User-Agent is properly formatted
+3. Bot posts show the [App] label
 
 ## Costs
 
