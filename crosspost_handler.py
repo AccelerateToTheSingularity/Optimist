@@ -256,7 +256,7 @@ def get_existing_target_urls(target_subreddit, lookback_days: int = 2) -> set:
     return existing_urls
 
 
-def is_already_crossposted(submission, existing_urls: set, history: list) -> bool:
+def is_already_crossposted(submission, existing_urls: set, history_ids: set) -> bool:
     """Check if a post has already been crossposted."""
     # Check against existing URLs in target subreddit
     post_url = f"https://reddit.com{submission.permalink}"
@@ -264,7 +264,6 @@ def is_already_crossposted(submission, existing_urls: set, history: list) -> boo
         return True
     
     # Check against our internal history
-    history_ids = {entry.get("source_post_id") for entry in history}
     if submission.id in history_ids:
         return True
     
@@ -439,13 +438,14 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
     print(f"  🔍 Checking for existing posts in r/{CROSSPOST_TARGET_SUB}...")
     existing_urls = get_existing_target_urls(target_sub, CROSSPOST_LOOKBACK_DAYS)
     history = state["crosspost"].get("history", [])
+    history_ids = {entry.get("source_post_id") for entry in history}
     
     # Find the best AI-related post
     selected_post = None
     
     for submission in candidates:
         # Skip if already crossposted
-        if is_already_crossposted(submission, existing_urls, history):
+        if is_already_crossposted(submission, existing_urls, history_ids):
             print(f"     ⏭️ Skipping {submission.id} (already crossposted)")
             continue
         
