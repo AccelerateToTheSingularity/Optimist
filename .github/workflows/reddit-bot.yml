@@ -28,9 +28,8 @@ on:
       - 'requirements.txt'
       - '.github/workflows/reddit-bot.yml'
   schedule:
-    # Bot run paused — re-enable workflow + set BOT_ENABLED=true to resume (see docs/testing.md)
-    # - cron: '*/3 * * * *'
-    - cron: '0 0 * * 1'    # Weekly on Monday at midnight UTC (stats page)
+    - cron: '*/3 * * * *'   # Bot cycle (~every 3 min); gated by BOT_ENABLED repo variable
+    - cron: '0 0 * * 1'     # Weekly stats dashboard (Monday midnight UTC)
   workflow_dispatch:
     inputs:
       bot_profile:
@@ -64,7 +63,7 @@ permissions:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    # Requires repository variable BOT_ENABLED=true (workflow may also be disabled in Actions UI)
+    # Master switch: set repository variable BOT_ENABLED=true to run (schedule fires either way)
     if: vars.BOT_ENABLED == 'true'
 
     steps:

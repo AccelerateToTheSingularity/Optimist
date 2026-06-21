@@ -58,13 +58,12 @@ Optional email secrets for failure notifications: `EMAIL_USERNAME`, `EMAIL_PASSW
 
 ### 5. Enable Actions (when ready)
 
-**Master switch:** repository variable `BOT_ENABLED` must be `true` for the bot to run. Keep it **`false`** until you are ready (default after this sync).
+**Master switch:** repository variable `BOT_ENABLED` must be `true` for the bot to run. Keep it **`false`** until you are ready (current setting).
 
-The 3-minute schedule is commented out in the workflow. When enabling:
+The workflow runs on a **3-minute schedule** automatically, but the bot job is skipped while `BOT_ENABLED=false`. When enabling:
 
 1. Set `BOT_ENABLED=true` in repo **Settings → Secrets and variables → Actions → Variables**
-2. Optionally re-enable the cron in `.github/workflows/reddit-bot.yml`
-3. Default profile is **`post_tldr_only`** (post TLDRs only). Turn on other features one at a time via `BOT_*` variables or the local settings GUI.
+2. Default profile is **`post_tldr_only`** (post TLDRs only). Turn on other features one at a time via `BOT_*` variables or the local settings GUI.
 
 ## Configuration
 
