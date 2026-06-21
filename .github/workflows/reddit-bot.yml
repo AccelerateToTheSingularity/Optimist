@@ -11,6 +11,21 @@ on:
       - 'reply_handler.py'
       - 'summon_handler.py'
       - 'ban_handler.py'
+      - 'crosspost_handler.py'
+      - 'acceleration_handler.py'
+      - 'content_moderation.py'
+      - 'moderation_rules.py'
+      - 'mod_attention.py'
+      - 'bot_utils.py'
+      - 'bot_comment_format.py'
+      - 'file_lock.py'
+      - 'audit_log.py'
+      - 'prompts.py'
+      - 'runtime_settings.py'
+      - 'reddit_reference.py'
+      - 'generate_stats_page.py'
+      - 'data/rules.json'
+      - 'requirements.txt'
       - '.github/workflows/reddit-bot.yml'
   schedule:
     # Bot run paused — re-enable workflow + set BOT_ENABLED=true to resume (see docs/testing.md)
@@ -19,12 +34,13 @@ on:
   workflow_dispatch:
     inputs:
       bot_profile:
-        description: 'Runtime profile (leave empty for default r/accelerate)'
+        description: 'Runtime profile (post_tldr_only = cautious default)'
         required: false
-        default: ''
+        default: 'post_tldr_only'
         type: choice
         options:
-          - ''
+          - post_tldr_only
+          - minimax_starter
           - proai_limited
       dry_run:
         description: 'Log actions only; do not post to Reddit'
@@ -77,10 +93,26 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://api.minimax.io/v1' }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'MiniMax-M2.7' }}
-          BOT_PROFILE: ${{ github.event.inputs.bot_profile || vars.BOT_PROFILE || '' }}
+          BOT_PROFILE: ${{ github.event.inputs.bot_profile || vars.BOT_PROFILE || 'post_tldr_only' }}
           BOT_SUBREDDIT: ${{ github.event.inputs.subreddit || vars.BOT_SUBREDDIT }}
           BOT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
           BOT_TEST_COMMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test_comment || 'false' }}
+          # Feature toggles (defaults: post TLDRs only — enable one at a time via repo variables)
+          BOT_POST_TLDR_ENABLED: ${{ vars.BOT_POST_TLDR_ENABLED || 'true' }}
+          BOT_COMMENT_TLDR_ENABLED: ${{ vars.BOT_COMMENT_TLDR_ENABLED || 'false' }}
+          BOT_COMMENT_SUMMARY_ENABLED: ${{ vars.BOT_COMMENT_SUMMARY_ENABLED || 'false' }}
+          BOT_REDDIT_REFERENCE_TLDR_ENABLED: ${{ vars.BOT_REDDIT_REFERENCE_TLDR_ENABLED || 'false' }}
+          BOT_CONVERSATIONAL_REPLIES_ENABLED: ${{ vars.BOT_CONVERSATIONAL_REPLIES_ENABLED || 'false' }}
+          BOT_INBOX_REPLIES_ENABLED: ${{ vars.BOT_INBOX_REPLIES_ENABLED || 'false' }}
+          BOT_SUMMONS_ENABLED: ${{ vars.BOT_SUMMONS_ENABLED || 'false' }}
+          BOT_CROSSPOST_ENABLED: ${{ vars.BOT_CROSSPOST_ENABLED || 'false' }}
+          BOT_ACCELERATION_ENABLED: ${{ vars.BOT_ACCELERATION_ENABLED || 'false' }}
+          BOT_BAN_PHASE_ENABLED: ${{ vars.BOT_BAN_PHASE_ENABLED || 'false' }}
+          BOT_CONTENT_MODERATION_ENABLED: ${{ vars.BOT_CONTENT_MODERATION_ENABLED || 'false' }}
+          BOT_TROLL_ALERT_ENABLED: ${{ vars.BOT_TROLL_ALERT_ENABLED || 'false' }}
+          BOT_MILESTONE_FLAIR_ENABLED: ${{ vars.BOT_MILESTONE_FLAIR_ENABLED || 'false' }}
+          BOT_SPECIALIST_FLAIR_ENABLED: ${{ vars.BOT_SPECIALIST_FLAIR_ENABLED || 'false' }}
+          BOT_MODERATION_RULES_JSON: ${{ secrets.BOT_MODERATION_RULES_JSON }}
         run: |
           ARGS=""
           if [ "$BOT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "spam_detector",
+    "description": "Is this content spam, an advertisement, or promotional material disguised as discussion?",
+    "active": true,
+    "order": 10,
+    "target": "both",
+    "actions": ["report"],
+    "conditions": {"stop_on_match": true, "skip_mods": true, "skip_approved": true}
+  },
+  {
+    "name": "harassment_detector",
+    "description": "Does this content harass, threaten, or personally attack another person?",
+    "active": true,
+    "order": 20,
+    "target": "both",
+    "actions": ["report"],
+    "conditions": {"stop_on_match": false, "skip_mods": true, "skip_approved": false}
+  },
+  {
+    "name": "off_topic_detector",
+    "description": "Is this content completely unrelated to the subreddit's stated topic with no constructive connection?",
+    "active": false,
+    "order": 30,
+    "target": "posts",
+    "actions": ["report"],
+    "conditions": {"stop_on_match": false, "skip_mods": true, "skip_approved": false}
+  }
+]

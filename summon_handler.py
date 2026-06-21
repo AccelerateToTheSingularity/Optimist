@@ -4,7 +4,7 @@ Handles responding when users explicitly summon the bot anywhere in r/accelerate
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import config
 from config import (
@@ -12,55 +12,25 @@ from config import (
     MAX_AGE_HOURS,
     SUMMON_PATTERNS,
     HOSTILE_PATTERNS,
-    BOT_INDICATORS,
     SAME_USER_COOLDOWN_HOURS,
     SAME_USER_REPLIES_BEFORE_COOLDOWN,
     MOD_CACHE_REFRESH_DAYS,
 )
+from bot_utils import (
+    is_likely_bot,
+    is_too_old,
+    is_hostile_comment,
+    check_user_cooldown,
+    get_cached_moderators,
+    is_moderator,
+)
 from persona import generate_conversational_response, generate_post_summon_response
+from bot_comment_format import format_bot_comment
 from acceleration_handler import (
     handle_acceleration_command,
     queue_background_scan,
 )
-
-
-def get_cached_moderators(state: dict, subreddit) -> set:
-    """
-    Get moderator set from cache, refreshing from Reddit if stale.
-    Updates state in-place with cached data.
-    """
-    now = datetime.utcnow().timestamp()
-    cache_max_age = MOD_CACHE_REFRESH_DAYS * 24 * 3600  # Convert days to seconds
-    
-    cached_mods = state.get("moderator_cache", {})
-    last_refresh = cached_mods.get("last_refresh", 0)
-    mod_list = cached_mods.get("moderators", [])
-    
-    # Check if cache is fresh enough
-    if mod_list and (now - last_refresh) < cache_max_age:
-        return set(m.lower() for m in mod_list)
-    
-    # Cache is stale or empty - refresh from Reddit
-    try:
-        fresh_mods = [mod.name for mod in subreddit.moderator()]
-        state["moderator_cache"] = {
-            "moderators": fresh_mods,
-            "last_refresh": now
-        }
-        print(f"    🔄 Refreshed moderator cache ({len(fresh_mods)} mods)")
-        return set(m.lower() for m in fresh_mods)
-    except Exception as e:
-        print(f"    ⚠️ Could not refresh mod cache: {e}")
-        # Return stale cache if available, otherwise empty
-        return set(m.lower() for m in mod_list)
-
-
-def is_moderator(author_name: str | None, state: dict, subreddit) -> bool:
-    """Check if a user is a moderator of the subreddit."""
-    if not author_name:
-        return False
-    mods = get_cached_moderators(state, subreddit)
-    return author_name.lower() in mods
+from bot_utils import validate_reply_response
 
 
 def is_summon(text: str) -> bool:
@@ -70,54 +40,6 @@ def is_summon(text: str) -> bool:
         if re.search(pattern, text_lower, re.IGNORECASE):
             return True
     return False
-
-
-def is_hostile_comment(text: str) -> bool:
-    """Check if a comment appears hostile/bad-faith."""
-    text_lower = text.lower()
-    for pattern in HOSTILE_PATTERNS:
-        if re.search(pattern, text_lower):
-            return True
-    return False
-
-
-def is_likely_bot(author_name: str | None) -> bool:
-    """Check if an author is likely a bot based on username patterns."""
-    if not author_name:
-        return True
-    
-    name_lower = author_name.lower()
-    if name_lower.endswith("bot") or name_lower.endswith("-mod") or "automod" in name_lower:
-        return True
-    for pattern in BOT_INDICATORS:
-        if re.search(pattern.lower(), name_lower):
-            return True
-    return False
-
-
-def is_too_old(created_utc: float) -> bool:
-    """Check if a comment/post is older than MAX_AGE_HOURS."""
-    age_seconds = datetime.utcnow().timestamp() - created_utc
-    age_hours = age_seconds / 3600
-    return age_hours > MAX_AGE_HOURS
-
-
-def check_user_cooldown(author_name: str | None, recent_replies: dict) -> bool:
-    """Check if we've recently replied to this user too many times."""
-    if not author_name or author_name not in recent_replies:
-        return False
-    
-    user_data = recent_replies[author_name]
-    reply_count = user_data.get("count", 0)
-    first_reply_time = user_data.get("first_reply_time", 0)
-    
-    # If under the limit, allow reply
-    if reply_count < SAME_USER_REPLIES_BEFORE_COOLDOWN:
-        return False
-    
-    # Over limit - check if cooldown has expired
-    hours_since = (datetime.utcnow().timestamp() - first_reply_time) / 3600
-    return hours_since < SAME_USER_COOLDOWN_HOURS
 
 
 def check_for_summons(
@@ -179,7 +101,7 @@ def check_for_summons(
                     parents = reddit_instance.info(fullnames=list(parent_ids_to_fetch))
                     for parent in parents:
                         if hasattr(parent, 'author') and parent.author:
-                            parent_author_cache[parent.name] = parent.author.name
+                            parent_author_cache[parent.fullname] = parent.author.name
                 except Exception as e:
                     print(f"    ⚠️ Could not batch fetch parents: {e}")
 
@@ -214,7 +136,7 @@ def check_for_summons(
                     parent = comment.parent()
                     if hasattr(parent, 'author') and parent.author and parent.author.name == bot_username:
                         continue
-            except:
+            except Exception:
                 pass  # If we can't get parent, proceed normally
             
             # Skip deleted
@@ -266,7 +188,9 @@ def check_for_summons(
                     if accel_response:
                         # This was an acceleration command
                         if not dry_run:
-                            comment.reply(accel_response)
+                            accel_reply = comment.reply(format_bot_comment(accel_response))
+                            validate_reply_response(accel_reply, "acceleration reply")
+                            accel_reply.mod.distinguish(sticky=False)
                         print(f"       🚀 Handled acceleration command for u/{author_name}")
                         summon_responses.add(comment.id)
                         summons_handled += 1
@@ -281,14 +205,19 @@ def check_for_summons(
                 )
                 
                 # Post the reply
-                comment.reply(response_text)
+                reply = comment.reply(format_bot_comment(response_text))
+                validate_reply_response(reply, "summon reply")
+                reply.mod.distinguish(sticky=False)
                 
                 print(f"       ✅ Responded to summon ({len(response_text.split())} words, {token_info['total_tokens']} tokens)")
+                
+                from audit_log import log_audit_event
+                log_audit_event("summon", comment.id, author_name or "[deleted]", comment.body, "replied", True)
                 
                 # Update tracking
                 summon_responses.add(comment.id)
                 # Track reply count per user (reset if cooldown window has passed)
-                now = datetime.utcnow().timestamp()
+                now = datetime.now(timezone.utc).timestamp()
                 if author_name not in recent_user_replies:
                     recent_user_replies[author_name] = {"count": 1, "first_reply_time": now}
                 else:
@@ -314,6 +243,10 @@ def check_for_summons(
     # Check posts for summons (in title or body)
     if summons_handled < MAX_REPLIES_PER_RUN:
         try:
+            # Rate limiting: wait before making another API call
+            import time
+            time.sleep(0.5)
+            
             posts = list(subreddit.new(limit=25))
             
             for post in posts:
@@ -372,14 +305,20 @@ def check_for_summons(
                     )
                     
                     # Post the reply
-                    post.reply(response_text)
+                    reply = post.reply(format_bot_comment(response_text))
+                    validate_reply_response(reply, "post summon reply")
+                    reply.mod.distinguish(sticky=False)
                     
                     print(f"       ✅ Responded to post summon ({len(response_text.split())} words, {token_info['total_tokens']} tokens)")
+                    
+                    # Log audit event
+                    from audit_log import log_audit_event
+                    log_audit_event("post_summon", post_id, author_name, post.title[:100], "replied", True)
                     
                     # Update tracking
                     summon_responses.add(post_id)
                     # Track reply count per user (reset if cooldown window has passed)
-                    now = datetime.utcnow().timestamp()
+                    now = datetime.now(timezone.utc).timestamp()
                     if author_name not in recent_user_replies:
                         recent_user_replies[author_name] = {"count": 1, "first_reply_time": now}
                     else:
@@ -403,7 +342,7 @@ def check_for_summons(
             print(f"  ❌ Error scanning posts for summons: {e}")
     
 # Clean up old user reply tracking (remove entries older than cooldown window)
-    now = datetime.utcnow().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     cutoff_seconds = SAME_USER_COOLDOWN_HOURS * 3600
     recent_user_replies = {
         user: data for user, data in recent_user_replies.items()

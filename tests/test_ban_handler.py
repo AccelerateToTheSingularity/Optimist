@@ -1,10 +1,10 @@
 
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 import sys
 import os
 from io import StringIO
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add parent directory to path to import ban_handler
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,7 +25,7 @@ class TestBanHandler(unittest.TestCase):
             log.action = "removelink"
             log.details = "User has negative local reputation"
             log.target_author = name
-            log.created_utc = datetime.utcnow().timestamp()
+            log.created_utc = datetime.now(timezone.utc).timestamp()
             log_entries.append(log)
 
         subreddit.mod.log.return_value = log_entries
@@ -43,14 +43,9 @@ class TestBanHandler(unittest.TestCase):
 
         state = {"banned_users": [], "stats": {}}
 
-        # Capture stdout
-        captured_output = StringIO()
-        sys.stdout = captured_output
-
-        try:
+        # Capture stdout using mock.patch for proper test isolation
+        with patch('sys.stdout', new_callable=StringIO):
             check_and_ban_negative_karma_users(subreddit, state, dry_run=False)
-        finally:
-            sys.stdout = sys.__stdout__
 
         # Assert that subreddit.banned is called once total (optimized)
         self.assertEqual(banned_mock.call_count, 1)
@@ -64,13 +59,13 @@ class TestBanHandler(unittest.TestCase):
         log1.action = "removelink"
         log1.details = "User has negative local reputation"
         log1.target_author = "user1"
-        log1.created_utc = datetime.utcnow().timestamp()
+        log1.created_utc = datetime.now(timezone.utc).timestamp()
 
         log2 = Mock()
         log2.action = "removelink"
         log2.details = "User has negative local reputation"
         log2.target_author = "user2"
-        log2.created_utc = datetime.utcnow().timestamp()
+        log2.created_utc = datetime.now(timezone.utc).timestamp()
 
         subreddit.mod.log.return_value = [log1, log2]
 
@@ -84,13 +79,9 @@ class TestBanHandler(unittest.TestCase):
 
         state = {"banned_users": [], "stats": {}}
 
-        # Run
-        captured_output = StringIO()
-        sys.stdout = captured_output
-        try:
+        # Run with captured output
+        with patch('sys.stdout', new_callable=StringIO) as captured_output:
             users_banned, new_state = check_and_ban_negative_karma_users(subreddit, state, dry_run=False)
-        finally:
-            sys.stdout = sys.__stdout__
 
         # Verify call to subreddit.banned.add
         banned_calls = banned_mock.add.call_args_list

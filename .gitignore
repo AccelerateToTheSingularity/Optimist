@@ -1,15 +1,25 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-.Python
-*.egg-info/
-*.egg
+# Local-only agent notes (do not publish)
+AGENTS.md
+TODO.md
+
+# Runtime data
+data/bot_state.json
+data/stats.json
+data/audit_log.json
+data/rules.json
 
 # Environment
 .env
 .venv/
 venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+*.egg-info/
+*.egg
 
 # IDE
 .vscode/
@@ -20,6 +30,5 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Local testing
+# Logs
 *.log
-# Processing logs

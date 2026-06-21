@@ -3,7 +3,9 @@ Auto-ban handler for users with excessive negative karma.
 Monitors automod removals and bans repeat offenders.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+import config
 
 
 def check_and_ban_negative_karma_users(
@@ -25,7 +27,7 @@ def check_and_ban_negative_karma_users(
         Tuple of (users_banned, updated_state)
     """
     users_banned = 0
-    cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
     
     # Track who we've already processed to avoid duplicate attempts
     already_banned = set(state.get("banned_users", []))
@@ -38,7 +40,7 @@ def check_and_ban_negative_karma_users(
         for action in ["removelink", "removecomment"]:
             for log in subreddit.mod.log(action=action, limit=100):
                 # Skip old entries
-                log_time = datetime.utcfromtimestamp(log.created_utc)
+                log_time = datetime.fromtimestamp(log.created_utc, tz=timezone.utc)
                 if log_time < cutoff:
                     break
                 
@@ -87,7 +89,7 @@ def check_and_ban_negative_karma_users(
             # Perform the ban
             subreddit.banned.add(
                 username,
-                ban_reason="Auto-ban: Excessive negative karma (< -80)",
+                ban_reason=config.NEGATIVE_KARMA_BAN_REASON,
                 ban_message="You have been banned from r/accelerate due to excessive negative reputation. This action was taken automatically."
             )
             print(f"     ✅ Banned u/{username}")

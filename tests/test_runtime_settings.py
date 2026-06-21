@@ -11,9 +11,18 @@ _ORIGINAL_SUMMON_PATTERNS = list(config.SUMMON_PATTERNS)
 class TestRuntimeSettings(unittest.TestCase):
     def tearDown(self):
         config.SUBREDDIT = "accelerate"
-        config.CROSSPOST_ENABLED = True
-        config.ACCELERATION_ENABLED = True
+        config.CROSSPOST_ENABLED = False
+        config.ACCELERATION_ENABLED = False
         config.SUMMON_PATTERNS = list(_ORIGINAL_SUMMON_PATTERNS)
+
+    def test_default_profile_is_post_tldr_only(self):
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("BOT_PROFILE", None)
+            settings = resolve_runtime_settings()
+        self.assertTrue(settings.post_tldr_enabled)
+        self.assertFalse(settings.comment_tldr_enabled)
+        self.assertFalse(settings.summons_enabled)
+        self.assertFalse(settings.crosspost_enabled)
 
     def test_proai_limited_profile(self):
         with patch.dict(os.environ, {"BOT_PROFILE": "proai_limited"}, clear=False):

@@ -4,7 +4,8 @@ Manages opt-in flair showing user's karma from pro-AI subreddits.
 """
 
 import re
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timezone
 
 import config
 from config import (
@@ -44,7 +45,7 @@ def calculate_pro_ai_karma(redditor, reddit, scan_limit: int = None) -> tuple[in
     pro_ai_subs_lower = {sub.lower() for sub in ACCELERATION_PRO_AI_SUBS}
     
     # Only count items from last year
-    one_year_ago = datetime.utcnow().timestamp() - (365 * 24 * 3600)
+    one_year_ago = datetime.now(timezone.utc).timestamp() - (365 * 24 * 3600)
     
     try:
         # Scan comments
@@ -224,19 +225,8 @@ def classify_acceleration_intent(comment_body: str, gemini_model) -> dict | None
     Returns:
         Dict with 'action' ('on', 'off', 'check', None) or None if not acceleration-related
     """
-    prompt = f"""Analyze this Reddit comment and determine if the user is asking about the "Acceleration" flair feature.
-
-The Acceleration feature shows a user's karma from pro-AI subreddits as a flair.
-
-Comment: "{comment_body}"
-
-Respond with ONLY one of these exact words:
-- ON - if user wants to enable/turn on the acceleration flair
-- OFF - if user wants to disable/turn off the acceleration flair  
-- CHECK - if user wants to see their score but not change anything
-- NONE - if the comment is NOT about the acceleration flair feature
-
-Response:"""
+    from prompts import get_acceleration_intent_prompt
+    prompt = get_acceleration_intent_prompt(comment_body)
 
     try:
         response = gemini_model.generate_content(prompt)
@@ -320,7 +310,7 @@ def handle_acceleration_command(
     
     elif action in ("on", "check"):
         # Check if we have a recent calculation (within 1 week) to prevent fluctuation
-        now = datetime.utcnow().timestamp()
+        now = datetime.now(timezone.utc).timestamp()
         cached_data = user_data if user_data else accel_state.get("scanned_users", {}).get(author_name, {})
         last_calc = cached_data.get("last_calculated", cached_data.get("last_scanned", 0))
         
@@ -361,7 +351,11 @@ def handle_acceleration_command(
             }
             
             if not dry_run:
-                update_user_flair(subreddit, author_name, tier)
+                from contributor_flair import apply_combined_user_flair
+                apply_combined_user_flair(
+                    subreddit, reddit, author_name, state, gemini_model,
+                    acceleration_tier=tier, dry_run=dry_run,
+                )
             
             response = (
                 f"Your Acceleration flair is now active! 🚀\n\n"
@@ -394,7 +388,8 @@ def refresh_opted_in_users(
     subreddit,
     reddit,
     state: dict,
-    dry_run: bool = False
+    dry_run: bool = False,
+    llm_model=None,
 ) -> tuple[int, dict]:
     """
     Refresh acceleration scores for opted-in users (weekly job).
@@ -417,7 +412,7 @@ def refresh_opted_in_users(
     if not opted_in:
         return 0, state
     
-    now = datetime.utcnow().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     refresh_threshold = ACCELERATION_REFRESH_DAYS * 24 * 3600
     users_updated = 0
     
@@ -453,8 +448,13 @@ def refresh_opted_in_users(
             }
             
             if not dry_run:
-                update_user_flair(subreddit, username, tier)
-            
+                from contributor_flair import apply_combined_user_flair
+                apply_combined_user_flair(
+                    subreddit, reddit, username, state, llm_model,
+                    acceleration_tier=tier, dry_run=dry_run,
+                )
+            else:
+                print(f"    [DRY RUN] Would refresh flair for u/{username}: {tier}")
             print(f"    ✅ Refreshed u/{username}: {ratio_percent}% → {tier}")
             users_updated += 1
             
@@ -497,7 +497,7 @@ def queue_background_scan(username: str, state: dict) -> dict:
     
     # Check if recently scanned
     scanned = accel_state.get("scanned_users", {})
-    now = datetime.utcnow().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     refresh_threshold = ACCELERATION_BACKGROUND_REFRESH_DAYS * 24 * 3600
     
     last_scan = scanned.get(username, {}).get("last_scanned", 0)
@@ -540,17 +540,17 @@ def process_scan_queue(
         return 0, state
     
     accel_state = state.get("acceleration", {})
-    queue = accel_state.get("scan_queue", [])
+    queue = deque(accel_state.get("scan_queue", []))
     
     if not queue:
         return 0, state
     
     scanned_count = 0
-    now = datetime.utcnow().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     scanned_users = accel_state.setdefault("scanned_users", {})
     
     while queue and scanned_count < ACCELERATION_MAX_SCANS_PER_RUN:
-        username = queue.pop(0)  # Take from front of queue
+        username = queue.popleft()  # Take from front of queue
         
         # Skip if already opted-in
         if username in accel_state.get("opted_in_users", {}):
@@ -573,6 +573,9 @@ def process_scan_queue(
                         alert_mods_negative_karma(subreddit, username, pro_ai_karma)
                     accel_state.setdefault("alerted_users", []).append(username)
                     print(f"    ⚠️ Background scan: u/{username} has {pro_ai_karma} pro-AI karma")
+
+            from contributor_flair import try_acceleration_autoban
+            try_acceleration_autoban(subreddit, username, pro_ai_karma, state, dry_run=dry_run)
             
             scanned_count += 1
             print(f"    📊 Scanned u/{username}: {pro_ai_karma} karma (queue: {len(queue)} remaining)")

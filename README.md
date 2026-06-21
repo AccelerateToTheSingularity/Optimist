@@ -1,24 +1,24 @@
-# Reddit Bot (r/accelerate)
+# Reddit Bot (r/accelerate) — Optimist Prime
 
-Multi-function Reddit bot for r/accelerate community moderation.
+Multi-function AI community assistant for [r/accelerate](https://www.reddit.com/r/accelerate/). See **[FEATURES.md](FEATURES.md)** for a full capability overview you can share with mods and members.
 
-## Features
+## How it works
 
-- **TLDR Generation**: Summarizes long posts (270+ words) automatically
-- **Discussion Summaries**: Tracks comment milestones (20/50/100) and generates conversation summaries
-- **Reply Monitoring**: Responds to users who reply to the bot's comments
-- **Summon Detection**: Responds when directly addressed ("Hey bot", "Optimist Prime")
-- **Auto-Ban**: Bans users with excessive negative karma (< -80) when detected by AutoMod
+Runs on GitHub Actions on a schedule (when enabled), polling Reddit and performing configured tasks each cycle.
 
-## How It Works
-
-Runs on GitHub Actions every 3 minutes, 24/7.
-
-## Stats Dashboard
+## Stats dashboard
 
 **Live stats:** [https://acceleratetothesingularity.github.io/Optimist/](https://acceleratetothesingularity.github.io/Optimist/)
 
-Updated weekly (Mondays at midnight UTC).
+## Public repository policy
+
+This repo is **public** to use unlimited free GitHub Actions minutes. Do not commit:
+
+- API keys, tokens, or `.env`
+- Live `data/rules.json` (use `data/rules.example.json` + GitHub secret `BOT_MODERATION_RULES_JSON`)
+- `data/bot_state.json`, `data/audit_log.json` (runtime / PII-adjacent; gitignored locally)
+
+Edit moderation rules locally with `py manage_rules.py validate` / `list` / `enable` / `disable`.
 
 ## Setup
 
@@ -34,62 +34,85 @@ Note the **client ID** (under the app name) and **client secret**.
 
 ### 3. Get a Refresh Token
 
-Run the auth script locally to authorize the bot account:
-
 ```bash
 set REDDIT_CLIENT_ID=your_client_id
 set REDDIT_CLIENT_SECRET=your_client_secret
 py obtain_refresh_token.py
 ```
 
-This opens a Reddit page. Log in as `u/OptimistPrime_AI_Bot` and click "Allow".
-The script prints a refresh token — copy it.
+Log in as the bot account and click "Allow". Copy the refresh token.
 
 ### 4. Add GitHub Secrets
 
-Go to Settings → Secrets and variables → Actions:
-
-| Secret Name | Description |
-|-------------|-------------|
+| Secret | Description |
+|--------|-------------|
 | `REDDIT_CLIENT_ID` | Reddit app client ID |
 | `REDDIT_CLIENT_SECRET` | Reddit app client secret |
 | `REDDIT_REFRESH_TOKEN` | Refresh token from step 3 |
-| `REDDIT_APP_NAME` | App name for User-Agent (default: OptimistPrimeModBot) |
-| `OPENAI_API_KEY` | LLM API key (MiniMax via OpenAI-compatible API) |
-| `EMAIL_USERNAME` | Gmail for notifications (optional) |
-| `EMAIL_PASSWORD` | Gmail app password (optional) |
-| `NOTIFICATION_EMAIL` | Email to receive failure alerts (optional) |
+| `REDDIT_APP_NAME` | User-Agent app name (default: OptimistPrimeModBot) |
+| `OPENAI_API_KEY` or `LLM_API_KEY` | LLM API key |
+| `BOT_MODERATION_RULES_JSON` | Optional: production moderation rules (JSON array) |
+| `BOT_LLM_PROVIDER` | Optional: `minimax`, `openai`, `claude`, `gemini`, `deepseek`, `glm`, `groq`, `mistral`, `together`, `xai`, `custom` |
 
-### 5. Enable Actions
+Optional email secrets for failure notifications: `EMAIL_USERNAME`, `EMAIL_PASSWORD`, `NOTIFICATION_EMAIL`.
 
-Go to the Actions tab and enable workflows.
+### 5. Enable Actions (when ready)
+
+**Master switch:** repository variable `BOT_ENABLED` must be `true` for the bot to run. Keep it **`false`** until you are ready (default after this sync).
+
+The 3-minute schedule is commented out in the workflow. When enabling:
+
+1. Set `BOT_ENABLED=true` in repo **Settings → Secrets and variables → Actions → Variables**
+2. Optionally re-enable the cron in `.github/workflows/reddit-bot.yml`
+3. Default profile is **`post_tldr_only`** (post TLDRs only). Turn on other features one at a time via `BOT_*` variables or the local settings GUI.
 
 ## Configuration
 
-Edit `config.py` to customize all settings.
+Runtime toggles live in `config.py` and can be overridden with `BOT_*` environment variables. Use `BOT_PROFILE=minimax_starter` for a fuller feature preset.
 
-## API Compliance (2026)
+### Local settings GUI
 
-This bot complies with Reddit's 2026 automated account transparency requirements:
+For local development, use the browser-based settings editor (writes `.env`, gitignored):
 
-- **User-Agent Format**: Uses the required format: `<platform>:<app ID>:<version> (by /u/<reddit username>)`
-- **Registered App**: Uses the "Optimist Prime Mod Bot" registered under u/stealthispost
-- **[App] Label**: Bot posts show the [App] label to identify as automated content
-
-To test the bot's API compliance, you can run:
 ```bash
-python bot_runner.py --test-comment
+py settings_gui.py
 ```
 
-This will post a test comment in the specified Reddit thread to verify:
-1. Bot can authenticate as u/OptimistPrime_AI_Bot
-2. User-Agent is properly formatted
-3. Bot posts show the [App] label
+**Start Menu (Windows):** run once from the repo folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install_start_menu_shortcut.ps1
+```
+
+Then open **Start → Optimist Prime Settings** — no terminal window, light-themed UI, closes when you close the browser tab or click **Done**. Edit AI moderation rules directly in the **AI moderation rules** section (not raw JSON).
+
+Opens `http://127.0.0.1:8765/` with toggles for LLM provider, Reddit credentials, moderation, TLDR, flair, and more. Password fields left blank keep existing secrets.
+
+After saving, run `py bot_runner.py --dry-run` to test. For production (GitHub Actions), mirror the same `BOT_*` vars as repository secrets/variables.
+
+Supported `BOT_LLM_PROVIDER` presets locally: `minimax`, `openai`, `claude`, `gemini`, `deepseek`, `glm`, `groq`, `mistral`, `together`, `xai`, `custom`.
+
+## Rule management (local)
+
+```bash
+py manage_rules.py validate
+py manage_rules.py list
+py manage_rules.py enable spam_detector
+py manage_rules.py push-wiki   # optional wiki sync
+```
+
+## API compliance (2026)
+
+- User-Agent: `script:<app>:v<version> (by /u/<developer>)`
+- Bot posts use the standard footer identifying automated content
+
+Dry-run: `py bot_runner.py --dry-run`  
+Safe mode: `BOT_SAFE_MODE=true`
 
 ## Costs
 
-- **GitHub Actions**: Free for public repos
-- **LLM API (MiniMax)**: billed per provider usage; see [MiniMax pricing](https://platform.minimax.io/)
+- **GitHub Actions**: Free for public repositories
+- **LLM**: Billed by your chosen provider (OpenAI, Gemini, etc.)
 
 ## License
 

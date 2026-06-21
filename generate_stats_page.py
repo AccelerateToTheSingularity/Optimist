@@ -15,7 +15,7 @@ def load_json(filepath, default):
         try:
             with open(filepath, 'r') as f:
                 return json.load(f)
-        except:
+        except (json.JSONDecodeError, IOError):
             pass
     return default
 
@@ -52,7 +52,7 @@ def format_datetime(dt_str):
         else:
             dt = datetime.fromisoformat(dt_str)
         return dt.strftime("%Y-%m-%d %H:%M UTC")
-    except:
+    except (ValueError, TypeError):
         return dt_str
 
 

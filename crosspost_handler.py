@@ -13,7 +13,7 @@ Features:
 """
 
 import random
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 import config
 from config import (
@@ -28,93 +28,13 @@ from config import (
     CROSSPOST_LOOKBACK_DAYS,
 )
 from persona import ACCELERATE_PERSONA_PROMPT
-
-
-def get_ai_classification_prompt(title: str, selftext: str) -> str:
-    """Build prompt for classifying a post as AI-related or not."""
-    content_snippet = selftext[:500] if selftext else "[Link post - no body text]"
-    
-    return f"""You are classifying Reddit posts for an AI-focused subreddit.
-
-Classify as "YES" ONLY if the post is DIRECTLY about:
-- Artificial Intelligence, Machine Learning, Deep Learning
-- LLMs, GPT, Claude, Gemini, or other AI models
-- AGI, ASI, or the Technological Singularity
-- AI research, AI labs (OpenAI, Anthropic, DeepMind, Google AI, Meta AI, etc.)
-- AI capabilities, benchmarks, or breakthroughs
-- AI policy, regulation, or safety (if AI is the main focus)
-
-Classify as "NO" if:
-- AI is mentioned tangentially but isn't the main topic
-- It's about robotics, automation, biotech, space, crypto WITHOUT AI being central
-- It's a general tech/science post that doesn't center on AI
-- It's a meme or shitpost (unless specifically about AI)
-- It's about acceleration philosophy without specific AI focus
-
-POST TITLE: {title}
-POST CONTENT: {content_snippet}
-
-Reply with ONLY "YES" or "NO"."""
-
-
-def get_title_enhancement_prompt(title: str) -> str:
-    """Build prompt for potentially improving a post title."""
-    return f"""You are helping crosspost an AI-related post to r/ProAI, a community excited about AI progress and the Singularity.
-
-ORIGINAL TITLE: "{title}"
-
-Your task:
-1. If the title is already great, return it EXACTLY unchanged
-2. If it could be clearer or more engaging, improve it slightly (keep the same meaning)
-3. If there's room (under 280 chars total), you MAY add brief excited commentary like:
-   - "🔥 [title]"
-   - "[title] - this is huge"
-   - "[title] 👀"
-   - "[title] - the future is here"
-   
-Guidelines:
-- Keep the core meaning intact
-- Don't sensationalize or mislead
-- Don't exceed 290 characters total
-- If the original is already perfect, return it exactly as-is
-- Most titles should stay unchanged or have minimal tweaks
-
-Return ONLY the final title, nothing else."""
-
-
-def get_crosspost_comment_prompt(title: str, content_summary: str) -> str:
-    """Build prompt for generating an enthusiastic comment on the crosspost."""
-    return f"""{ACCELERATE_PERSONA_PROMPT}
-
-You just crossposted an AI-related post to r/ProAI from r/accelerate.
-
-POST TITLE: {title}
-POST CONTENT SUMMARY: {content_summary}
-
-Write a brief comment (1-3 sentences) reacting to this post like a regular excited community member would.
-
-**CRITICAL - SOUND LIKE A REAL REDDITOR:**
-Here are examples of how real r/accelerate users comment:
-- "Welp. I guess the Singularity is on then. I mean holy shit."
-- "This is massive, the cost/compute is scaling insanely. 2026 will be a crazy year."
-- "God damn how do we speed this up even more?"
-- "I'll wait for actual benchmarks, but for now, it's impressive, we're moving so fast it's unreal!!!"
-- "10x reduction is insane."
-- "Another nail in the coffin of the assumption that these models will get progressively more demanding."
-
-**DO NOT:**
-- Start with "Hey r/ProAI!" or any subreddit greeting - that's corporate/bot-like
-- Use phrases like "Sharing this cool article" or "Exciting times" - too formal
-- Sound like a press release or marketing copy
-- Mention that you're crossposting or "sharing" anything
-
-**DO:**
-- React genuinely like you just saw something cool
-- Use casual language, maybe some mild profanity if it fits
-- Keep it short - sometimes just one punchy sentence is perfect
-- Sound like a real person who's excited, not a community manager
-
-Your comment:"""
+from prompts import (
+    get_crosspost_classification_prompt as get_ai_classification_prompt,
+    get_title_enhancement_prompt,
+    get_crosspost_comment_prompt,
+)
+from llm_client import extract_token_info
+from bot_utils import validate_reply_response
 
 
 def initialize_crosspost_state(state: dict) -> dict:
@@ -191,7 +111,7 @@ def is_time_to_crosspost(state: dict) -> bool:
         return False
     
     # Check if current hour >= scheduled hour
-    current_hour = datetime.utcnow().hour
+    current_hour = datetime.now(timezone.utc).hour
     return current_hour >= scheduled_hour
 
 
@@ -205,11 +125,11 @@ def fetch_candidate_posts(source_subreddit) -> list:
     - Sorted by score descending
     """
     candidates = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Fetch top posts from the last day or two
     for submission in source_subreddit.top(time_filter="day", limit=50):
-        post_age_hours = (now - datetime.utcfromtimestamp(submission.created_utc)).total_seconds() / 3600
+        post_age_hours = (now - datetime.fromtimestamp(submission.created_utc, tz=timezone.utc)).total_seconds() / 3600
         
         # Check age constraints
         if post_age_hours < CROSSPOST_MIN_HOURS_OLD:
@@ -235,12 +155,12 @@ def get_existing_target_urls(target_subreddit, lookback_days: int = 2) -> set:
     Used to avoid duplicate crossposts.
     """
     existing_urls = set()
-    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     
     try:
         for submission in target_subreddit.new(limit=100):
             # Stop if we've gone past the lookback period
-            if datetime.utcfromtimestamp(submission.created_utc) < cutoff:
+            if datetime.fromtimestamp(submission.created_utc, tz=timezone.utc) < cutoff:
                 break
             
             # Track the URL (for crossposts, this is the original post URL)
@@ -286,12 +206,12 @@ def classify_post_as_ai_related(submission, gemini_model) -> tuple[bool, dict]:
     )
     
     # Extract token info
-    token_info = {
-        "input_tokens": response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0,
-        "output_tokens": response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0,
-    }
-    token_info["total_tokens"] = token_info["input_tokens"] + token_info["output_tokens"]
-    token_info["cost"] = (token_info["input_tokens"] * 0.10 + token_info["output_tokens"] * 0.40) / 1_000_000
+    token_info = extract_token_info(response)
+    
+    # Validate response
+    if not hasattr(response, 'text') or response.text is None:
+        print(f"     ⚠️ LLM returned None response for classification")
+        return False, token_info
     
     result = response.text.strip().upper()
     is_ai_related = result == "YES"
@@ -314,12 +234,7 @@ def enhance_title(original_title: str, gemini_model) -> tuple[str, dict]:
     )
     
     # Extract token info
-    token_info = {
-        "input_tokens": response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0,
-        "output_tokens": response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0,
-    }
-    token_info["total_tokens"] = token_info["input_tokens"] + token_info["output_tokens"]
-    token_info["cost"] = (token_info["input_tokens"] * 0.10 + token_info["output_tokens"] * 0.40) / 1_000_000
+    token_info = extract_token_info(response)
     
     enhanced = response.text.strip()
     
@@ -348,12 +263,7 @@ def generate_crosspost_comment(title: str, content: str, gemini_model) -> tuple[
     )
     
     # Extract token info
-    token_info = {
-        "input_tokens": response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0,
-        "output_tokens": response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0,
-    }
-    token_info["total_tokens"] = token_info["input_tokens"] + token_info["output_tokens"]
-    token_info["cost"] = (token_info["input_tokens"] * 0.10 + token_info["output_tokens"] * 0.40) / 1_000_000
+    token_info = extract_token_info(response)
     
     return response.text.strip(), token_info
 
@@ -385,7 +295,10 @@ def perform_crosspost(
         )
         
         # Leave an enthusiastic comment
-        crosspost.reply(comment_text)
+        from bot_comment_format import format_bot_comment
+        comment = crosspost.reply(format_bot_comment(comment_text))
+        validate_reply_response(comment, "crosspost comment")
+        comment.mod.distinguish(sticky=False)
         
         return True, f"https://reddit.com{crosspost.permalink}"
     
@@ -419,7 +332,7 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
         elif state["crosspost"].get("last_crosspost_date") == date.today().isoformat():
             print(f"  ✅ Already crossposted today")
         else:
-            print(f"  ⏳ Not yet time (scheduled for hour {scheduled} UTC, current: {datetime.utcnow().hour})")
+            print(f"  ⏳ Not yet time (scheduled for hour {scheduled} UTC, current: {datetime.now(timezone.utc).hour})")
         return 0, 0, 0.0, state
     
     # Get subreddits
@@ -490,6 +403,11 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
     print(f"     Comment: {comment_text[:80]}...")
     
     # Perform the crosspost
+    from bot_utils import claim_action
+    if not claim_action(state, f"crosspost:{selected_post.id}"):
+        print(f"  ⏭️ Crosspost already recorded for {selected_post.id}")
+        return 0, total_tokens, total_cost, state
+
     print(f"  📤 Crossposting to r/{CROSSPOST_TARGET_SUB}...")
     success, result = perform_crosspost(
         selected_post,
@@ -512,7 +430,7 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
             "target_url": result,
             "original_title": selected_post.title,
             "enhanced_title": enhanced_title,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "score_at_crosspost": selected_post.score,
         })
         
@@ -520,6 +438,7 @@ def check_and_crosspost(reddit, gemini_model, state: dict, dry_run: bool = False
         state["crosspost"]["history"] = state["crosspost"]["history"][-100:]
         
         # Update stats
+        state.setdefault("stats", {})
         if "total_crossposts" not in state["stats"]:
             state["stats"]["total_crossposts"] = 0
         state["stats"]["total_crossposts"] += 1

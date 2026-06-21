@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 
 import config
 
+# Store base patterns so apply_runtime_settings can reset before appending
+_BASE_SUMMON_PATTERNS: list[str] | None = None
+
 
 def _env_bool(name: str, default: bool | None = None) -> bool | None:
     raw = os.environ.get(name)
@@ -25,7 +28,10 @@ def _env_int(name: str, default: int | None = None) -> int | None:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
         return default
-    return int(raw)
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return default
 
 
 def _env_str(name: str, default: str) -> str:
@@ -36,6 +42,24 @@ def _env_str(name: str, default: str) -> str:
 
 
 PROFILE_PRESETS: dict[str, dict] = {
+    "post_tldr_only": {
+        "subreddit": "accelerate",
+        "post_tldr_enabled": True,
+        "comment_tldr_enabled": False,
+        "comment_summary_enabled": False,
+        "crosspost_enabled": False,
+        "acceleration_enabled": False,
+        "ban_phase_enabled": False,
+        "inbox_replies_enabled": False,
+        "summons_enabled": False,
+        "max_llm_calls_per_run": 2,
+        "max_tldr_per_run": 1,
+        "max_replies_per_run": 0,
+        "max_tldr_per_day": 40,
+        "max_replies_per_day": 0,
+        "post_scan_limit": 50,
+        "post_word_threshold": 270,
+    },
     "proai_limited": {
         "subreddit": "ProAI",
         "post_tldr_enabled": True,
@@ -54,6 +78,24 @@ PROFILE_PRESETS: dict[str, dict] = {
         "post_scan_limit": 15,
         "post_word_threshold": 200,
     },
+    "minimax_starter": {
+        "subreddit": "accelerate",
+        "post_tldr_enabled": True,
+        "comment_tldr_enabled": True,
+        "comment_summary_enabled": True,
+        "crosspost_enabled": True,
+        "acceleration_enabled": True,
+        "ban_phase_enabled": True,
+        "inbox_replies_enabled": True,
+        "summons_enabled": True,
+        "max_llm_calls_per_run": 5,
+        "max_tldr_per_run": 3,
+        "max_replies_per_run": 1,
+        "max_tldr_per_day": 200,
+        "max_replies_per_day": 100,
+        "post_scan_limit": 50,
+        "post_word_threshold": 200,
+    },
 }
 
 
@@ -66,9 +108,9 @@ class RuntimeSettings:
     comment_summary_enabled: bool = config.COMMENT_SUMMARY_ENABLED
     crosspost_enabled: bool = config.CROSSPOST_ENABLED
     acceleration_enabled: bool = config.ACCELERATION_ENABLED
-    ban_phase_enabled: bool = True
-    inbox_replies_enabled: bool = True
-    summons_enabled: bool = True
+    ban_phase_enabled: bool = False
+    inbox_replies_enabled: bool = False
+    summons_enabled: bool = False
     max_llm_calls_per_run: int | None = None
     max_tldr_per_run: int = config.MAX_TLDR_PER_RUN
     max_replies_per_run: int = config.MAX_REPLIES_PER_RUN
@@ -76,6 +118,7 @@ class RuntimeSettings:
     max_replies_per_day: int = config.MAX_REPLIES_PER_DAY
     post_scan_limit: int | None = None
     post_word_threshold: int = config.POST_WORD_THRESHOLD
+    safe_mode: bool = config.SAFE_MODE
     extra_summon_patterns: list[str] = field(default_factory=list)
 
     def describe(self) -> str:
@@ -114,9 +157,9 @@ def resolve_runtime_settings(bot_username: str | None = None) -> RuntimeSettings
         ),
         crosspost_enabled=preset.get("crosspost_enabled", config.CROSSPOST_ENABLED),
         acceleration_enabled=preset.get("acceleration_enabled", config.ACCELERATION_ENABLED),
-        ban_phase_enabled=preset.get("ban_phase_enabled", True),
-        inbox_replies_enabled=preset.get("inbox_replies_enabled", True),
-        summons_enabled=preset.get("summons_enabled", True),
+        ban_phase_enabled=preset.get("ban_phase_enabled", False),
+        inbox_replies_enabled=preset.get("inbox_replies_enabled", False),
+        summons_enabled=preset.get("summons_enabled", False),
         max_llm_calls_per_run=preset.get("max_llm_calls_per_run"),
         max_tldr_per_run=preset.get("max_tldr_per_run", config.MAX_TLDR_PER_RUN),
         max_replies_per_run=preset.get("max_replies_per_run", config.MAX_REPLIES_PER_RUN),
@@ -152,6 +195,9 @@ def resolve_runtime_settings(bot_username: str | None = None) -> RuntimeSettings
     if (max_tldr_day := _env_int("BOT_MAX_TLDR_PER_DAY")) is not None:
         settings.max_tldr_per_day = max_tldr_day
 
+    if _env_bool("BOT_SAFE_MODE") is not None:
+        settings.safe_mode = _env_bool("BOT_SAFE_MODE")
+
     if bot_username:
         safe_name = re.escape(bot_username)
         settings.extra_summon_patterns.append(rf"\bu/{safe_name}\b")
@@ -173,6 +219,10 @@ def apply_runtime_settings(settings: RuntimeSettings) -> None:
     config.MAX_TLDR_PER_DAY = settings.max_tldr_per_day
     config.MAX_REPLIES_PER_DAY = settings.max_replies_per_day
     config.POST_WORD_THRESHOLD = settings.post_word_threshold
+    config.SAFE_MODE = settings.safe_mode
 
     if settings.extra_summon_patterns:
-        config.SUMMON_PATTERNS = list(config.SUMMON_PATTERNS) + settings.extra_summon_patterns
+        global _BASE_SUMMON_PATTERNS
+        if _BASE_SUMMON_PATTERNS is None:
+            _BASE_SUMMON_PATTERNS = list(config.SUMMON_PATTERNS)
+        config.SUMMON_PATTERNS = _BASE_SUMMON_PATTERNS + settings.extra_summon_patterns
