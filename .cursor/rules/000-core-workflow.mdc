@@ -1,0 +1,48 @@
+---
+description: Always-on workflow, public-repo boundaries, moderation safety, and validation for the r/accelerate GitHub Actions bot.
+globs: []
+alwaysApply: true
+---
+
+# Core workflow
+
+This repo is the public GitHub Actions Reddit bot for `r/accelerate` at `C:\Programming\reddit_mod_bot`.
+Preserve useful automation by default, including GitHub Actions runs, local settings GUI launchers, rule-management commands, dry-run checks, and Start Menu shortcut automation.
+
+Use `TODO.md` as the canonical unresolved-work log. Before ending substantive work, record follow-ups, skipped validation, or open risks there.
+
+Canonical reference docs (local-only via `.git/info/exclude` — do not commit to the public GitHub repo):
+
+- `docs/architecture.md` — components, flows, toggles.
+- `docs/project-notes.md` — durable implementation context.
+- `docs/testing.md` — validation commands and moderation checks.
+- `docs/troubleshooting.md` — debugging and recovery.
+
+
+## Public repo boundaries
+
+- Do not commit secrets, `.env`, local credentials, or private operating notes.
+- Do not commit skill-created local docs listed in `.git/info/exclude` (`.cursor/`, `TODO.md`, standard `docs/*.md` agent files, archived `AGENTS`).
+- Preserve `docs/index.html` as the public generated stats dashboard; do not replace it with private planning content.
+
+## Moderation and runtime safety
+
+- Moderation can ban users or send moderator alerts. Keep destructive actions behind explicit feature toggles and dry-run paths.
+- `AI_MODERATION_ENABLED` defaults off; verify disabled-by-default and dry-run behavior before considering moderation changes complete.
+- Do not edit `data/bot_state.json` casually — workflow-owned runtime state committed by Actions.
+- Treat `.env` as local-only credentials.
+
+## Operational context
+
+- Scheduled and manual runs: `.github/workflows/reddit-bot.yml`.
+- Runtime: `praw`, `google-generativeai`; feature defaults in `config.py` with boolean overrides via environment variables.
+
+## Validation
+
+After Python code changes when Python is available:
+
+```powershell
+py -m unittest discover tests
+```
+
+For moderation or workflow edits, also follow `docs/testing.md` (toggle gates, dry-run, workflow env defaults).

@@ -1,0 +1,20 @@
+---
+description: Validation commands, dry-run checks, workflow gates, and moderation regression checks for the r/accelerate Reddit bot.
+globs: ["tests/**", "**/*.py", ".github/workflows/**", "docs/testing.md", "docs/troubleshooting.md", "TODO.md"]
+alwaysApply: false
+---
+
+# Testing and validation
+
+Use focused validation:
+
+```powershell
+py -m unittest discover tests
+py bot_runner.py --dry-run
+py manage_rules.py validate
+```
+
+For GitHub Actions or production behavior, verify `BOT_ENABLED`, `BOT_PROFILE`, `BOT_SAFE_MODE`, moderation toggles, and required secrets/variables.
+For moderation changes, confirm disabled-by-default and dry-run behavior before considering the change complete.
+
+Keep runtime/log failures visible in stdout, workflow logs, or repo-owned docs.

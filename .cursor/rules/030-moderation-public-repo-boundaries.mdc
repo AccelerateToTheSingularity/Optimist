@@ -1,0 +1,26 @@
+---
+description: Public repository, moderation, Reddit API, GitHub Actions, secrets, and runtime-state boundaries.
+globs: ["config.py", "content_moderation.py", "moderation_rules.py", "manage_rules.py", "bot_runner.py", "data/**", ".github/workflows/**", "README.md", "FEATURES.md", "docs/**/*.md"]
+alwaysApply: false
+---
+
+# Moderation and public repo boundaries
+
+This is a public repository to use free GitHub Actions minutes.
+Keep secrets and private runtime state out of commits:
+
+- `.env`
+- Reddit tokens and refresh tokens
+- LLM API keys
+- live `data/rules.json`
+- `data/bot_state.json`
+- `data/audit_log.json`
+
+Preserve dry-run and disabled-by-default gates:
+
+- `BOT_ENABLED=false` skips production runs.
+- `AI_MODERATION_ENABLED` defaults off.
+- `BOT_SAFE_MODE=true` preserves dry-run moderation posture.
+
+Moderation automation is intentional when toggles authorize it.
+Review destructive behavior for feature gates, dry-run behavior, logs, and public-repo leakage rather than removing automation.

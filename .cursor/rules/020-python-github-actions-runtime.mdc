@@ -1,0 +1,24 @@
+---
+description: Python, GitHub Actions, settings GUI, and bot runtime rules for the r/accelerate Reddit bot.
+globs: ["**/*.py", "requirements.txt", ".github/workflows/**/*.yml", "install_start_menu_shortcut.ps1", "*.bat", "*.vbs", "README.md"]
+alwaysApply: false
+---
+
+# Python / GitHub Actions runtime
+
+Use existing automation:
+
+```powershell
+py -m unittest discover tests
+py bot_runner.py --dry-run
+py settings_gui.py
+py manage_rules.py validate
+py manage_rules.py list
+powershell -ExecutionPolicy Bypass -File install_start_menu_shortcut.ps1
+```
+
+The production bot runs through `.github/workflows/reddit-bot.yml`.
+The master switch is `BOT_ENABLED`; keep disabled-by-default behavior unless the task is explicitly about enabling production.
+
+The local settings GUI writes `.env`, which is gitignored.
+Do not replace it with manual env editing when the GUI or scripts already cover the workflow.
