@@ -9,12 +9,15 @@ import config
 from config import BOT_INDICATORS, BOT_OWNED_USERNAMES, MAX_AGE_HOURS, HOSTILE_PATTERNS
 
 
-def is_likely_bot(author_name: str | None) -> bool:
+def is_likely_bot(
+    author_name: str | None,
+    runtime_bot_username: str | None = None,
+) -> bool:
     """
     Check if an author is likely a bot based on username patterns.
 
     Checks:
-    - BOT_OWNED_USERNAMES (our own bots)
+    - BOT_OWNED_USERNAMES and optional runtime bot identity
     - BOT_INDICATORS regex patterns
     - Common bot username suffixes (endswith "bot", "-mod")
     - "automod" substring
@@ -24,8 +27,8 @@ def is_likely_bot(author_name: str | None) -> bool:
 
     name_lower = author_name.lower()
 
-    # Check owned bot usernames first
-    if author_name in BOT_OWNED_USERNAMES:
+    # Check owned bot usernames first (plus runtime identity when provided)
+    if is_bot_owned_author(author_name, runtime_bot_username):
         return True
 
     # Check common bot suffixes
@@ -38,6 +41,17 @@ def is_likely_bot(author_name: str | None) -> bool:
             return True
 
     return False
+
+
+def is_bot_owned_author(author_name: str | None, runtime_bot_username: str | None = None) -> bool:
+    """Return True for deleted authors, the runtime bot identity, or known migrated aliases."""
+    if not author_name:
+        return True
+    normalized = author_name.strip().casefold()
+    known = {name.strip().casefold() for name in BOT_OWNED_USERNAMES}
+    if runtime_bot_username:
+        known.add(runtime_bot_username.strip().casefold())
+    return normalized in known
 
 
 def is_too_old(created_utc: float) -> bool:

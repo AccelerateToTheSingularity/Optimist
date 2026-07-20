@@ -18,6 +18,7 @@ from config import (
 )
 from bot_utils import (
     is_likely_bot,
+    is_bot_owned_author,
     is_too_old,
     is_hostile_comment,
     check_user_cooldown,
@@ -25,7 +26,7 @@ from bot_utils import (
     is_moderator,
 )
 from persona import generate_conversational_response, generate_post_summon_response
-from bot_comment_format import format_bot_comment
+from bot_comment_format import format_bot_comment, strip_bot_footer
 from acceleration_handler import (
     handle_acceleration_command,
     queue_background_scan,
@@ -35,7 +36,7 @@ from bot_utils import validate_reply_response
 
 def is_summon(text: str) -> bool:
     """Check if text contains a summon phrase for the bot."""
-    text_lower = text.lower()
+    text_lower = strip_bot_footer(text).lower()
     for pattern in SUMMON_PATTERNS:
         if re.search(pattern, text_lower, re.IGNORECASE):
             return True
@@ -89,7 +90,7 @@ def check_for_summons(
                 # Pre-filter to reduce fetch count
                 if comment.id in summon_responses: continue
                 if is_too_old(comment.created_utc): continue
-                if comment.author and comment.author.name == bot_username: continue
+                if comment.author and is_bot_owned_author(comment.author.name, bot_username): continue
 
                 # Check parents for replies
                 if hasattr(comment, 'parent_id'):
@@ -120,7 +121,7 @@ def check_for_summons(
                 continue
             
             # Skip if it's our own comment
-            if comment.author and comment.author.name == bot_username:
+            if comment.author and is_bot_owned_author(comment.author.name, bot_username):
                 continue
             
             # Skip if this is a reply to our comment (reply_handler will handle those)
@@ -129,12 +130,12 @@ def check_for_summons(
                 parent_id = getattr(comment, 'parent_id', None)
 
                 if parent_id and parent_id in parent_author_cache:
-                    if parent_author_cache[parent_id] == bot_username:
+                    if is_bot_owned_author(parent_author_cache[parent_id], bot_username):
                         continue
                 # Fallback to slow N+1 method if not cached (e.g. reddit instance unavailable or fetch failed)
                 elif not parent_author_cache:
                     parent = comment.parent()
-                    if hasattr(parent, 'author') and parent.author and parent.author.name == bot_username:
+                    if hasattr(parent, 'author') and parent.author and is_bot_owned_author(parent.author.name, bot_username):
                         continue
             except Exception:
                 pass  # If we can't get parent, proceed normally
@@ -146,7 +147,7 @@ def check_for_summons(
             author_name = comment.author.name if comment.author else None
             
             # Queue commenter for background scan (processed 1 per cycle)
-            if config.ACCELERATION_ENABLED and author_name and not is_likely_bot(author_name):
+            if config.ACCELERATION_ENABLED and author_name and not is_likely_bot(author_name, bot_username):
                 state = queue_background_scan(author_name, state)
             
             # Check if this is a summon
@@ -154,7 +155,7 @@ def check_for_summons(
                 continue
             
             # Skip bots
-            if is_likely_bot(author_name):
+            if is_likely_bot(author_name, bot_username):
                 summon_responses.add(comment.id)
                 continue
             
@@ -264,7 +265,7 @@ def check_for_summons(
                     continue
                 
                 # Skip if it's our own post (unlikely but possible)
-                if post.author and post.author.name == bot_username:
+                if post.author and is_bot_owned_author(post.author.name, bot_username):
                     continue
                 
                 # Check for summon in title or body
@@ -275,7 +276,7 @@ def check_for_summons(
                 author_name = post.author.name if post.author else None
                 
                 # Skip bots
-                if is_likely_bot(author_name):
+                if is_likely_bot(author_name, bot_username):
                     summon_responses.add(post_id)
                     continue
                 

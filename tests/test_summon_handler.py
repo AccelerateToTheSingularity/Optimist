@@ -1,7 +1,9 @@
 """Tests for summon_handler.py pattern matching."""
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+from bot_comment_format import format_bot_comment
+from bot_utils import is_bot_owned_author
 from summon_handler import is_summon
 
 
@@ -24,6 +26,18 @@ class TestIsSummon(unittest.TestCase):
     def test_not_indirect_suggestion(self):
         self.assertFalse(is_summon("Someone should ask the bot about this"))
 
+    def test_bot_footer_does_not_trigger_summon(self):
+        self.assertFalse(
+            is_summon(
+                "Helpful answer\n\n---\n"
+                "*^(AI assistant · mention the bot, mod bot, or use !bot)*"
+            )
+        )
+
+    def test_current_footer_does_not_trigger_summon(self):
+        # Footer still contains "Optimist Prime"; strip_bot_footer must remove it.
+        self.assertFalse(is_summon(format_bot_comment("Helpful answer")))
+
 
 class TestParentAuthorCache(unittest.TestCase):
     """Parent batch cache must key by fullname (t1_xxx), not bare id."""
@@ -42,9 +56,8 @@ class TestParentAuthorCache(unittest.TestCase):
         self.assertNotIn("abc123", cache)
         self.assertEqual(cache["t1_abc123"], "OptimistPrime_AI_Bot")
 
-    @patch("summon_handler.SUMMON_PATTERNS", [r"\bbot\b"])
     def test_skips_reply_to_bot_via_parent_cache(self):
-        """When parent is the bot, comment should be skipped before summon check."""
+        """When parent is a migrated bot alias, skip before summon check."""
         comment = MagicMock()
         comment.id = "c1"
         comment.created_utc = 9_999_999_999
@@ -53,14 +66,16 @@ class TestParentAuthorCache(unittest.TestCase):
         comment.body = "hey bot help"
         comment.parent_id = "t1_parent1"
 
-        parent_author_cache = {"t1_parent1": "OptimistPrime_AI_Bot"}
+        runtime_bot_username = "future-runtime-name"
+        parent_author_cache = {"t1_parent1": "random87643"}
 
         parent_id = comment.parent_id
         skip = (
             parent_id in parent_author_cache
-            and parent_author_cache[parent_id] == "OptimistPrime_AI_Bot"
+            and is_bot_owned_author(parent_author_cache[parent_id], runtime_bot_username)
         )
         self.assertTrue(skip)
+        self.assertNotEqual(parent_author_cache[parent_id], runtime_bot_username)
 
 
 if __name__ == "__main__":

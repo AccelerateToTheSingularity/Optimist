@@ -15,6 +15,7 @@ import argparse
 from datetime import datetime, date, timezone
 
 from env_file import load_local_env
+from bot_logging import configure_logging, log_event
 
 load_local_env()
 
@@ -46,7 +47,7 @@ from config import (
     MAX_REPLIES_PER_DAY,
     SAME_USER_COOLDOWN_HOURS,
 )
-from bot_utils import is_moderator, is_content_approved, validate_reply_response, claim_action
+from bot_utils import is_moderator, is_content_approved, validate_reply_response, claim_action, is_bot_owned_author
 
 # Import handlers for reply, summon, ban, crosspost, and acceleration features
 from reply_handler import check_inbox_replies
@@ -275,7 +276,7 @@ def find_bot_comment(submission, username: str):
     submission.comments.replace_more(limit=0)
     for comment in submission.comments:
         if hasattr(comment, 'author') and comment.author:
-            if comment.author.name == username and comment.distinguished:
+            if is_bot_owned_author(comment.author.name, username) and comment.distinguished:
                 return comment
     return None
 
@@ -437,8 +438,11 @@ def main():
 
     if args.profile and not os.environ.get("BOT_PROFILE"):
         os.environ["BOT_PROFILE"] = args.profile
-    
+
+    log_path = configure_logging(also_stderr=False)
+    log_event("bot.startup", f"Reddit Mod Bot starting; log={log_path}", component="bot_runner")
     print(f"🚀 Reddit Mod Bot starting at {datetime.now(timezone.utc).isoformat()}")
+    print(f"📝 Log file: {log_path}")
     
     # Check required environment variables
     # Refresh token auth (preferred) or password auth (legacy fallback)
@@ -628,7 +632,7 @@ def main():
                         continue
                     if not hasattr(comment, "body") or not comment.body or comment.body == "[deleted]":
                         continue
-                    if comment.author and comment.author.name == bot_username:
+                    if comment.author and is_bot_owned_author(comment.author.name, bot_username):
                         continue
 
                     try:
@@ -912,7 +916,7 @@ def main():
                     continue
                 
                 # Skip bot's own comments
-                if hasattr(comment, 'author') and comment.author and comment.author.name == bot_username:
+                if hasattr(comment, 'author') and comment.author and is_bot_owned_author(comment.author.name, bot_username):
                     continue
                 
                 # Check word count
@@ -940,7 +944,7 @@ def main():
                     validate_reply_response(reply, "comment TLDR reply")
                     reply.mod.distinguish(sticky=False)
 
-                    if comment.author and comment.author.name != bot_username:
+                    if comment.author and not is_bot_owned_author(comment.author.name, bot_username):
                         from troll_alerts import maybe_evaluate_troll_alert
                         try:
                             maybe_evaluate_troll_alert(

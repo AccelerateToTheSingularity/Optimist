@@ -7,9 +7,12 @@ data/bot_state.json
 data/stats.json
 data/audit_log.json
 data/rules.json
+data/settings_gui_prefs.json
 
 # Environment
 .env
+.env.bak
+.env.tmp
 .venv/
 venv/
 
@@ -32,3 +35,4 @@ Thumbs.db
 
 # Logs
 *.log
+logs/

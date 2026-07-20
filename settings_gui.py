@@ -6,23 +6,37 @@ Usage:
     pyw settings_gui.py          (no console — used by Start Menu shortcut)
 
 Writes to .env and data/rules.json (both gitignored locally).
-Closes automatically when you close the browser tab or click Done.
+Changes auto-save. Close the tab or click Done when finished.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import threading
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from bot_logging import configure_logging, log_event
+from diagnostics import dump_diagnostics
 from env_file import load_env_file, save_env_file
 from llm_client import PROVIDER_PRESETS
 from moderation_rules import RuleLoadError, _validate_rule
+from settings_gui_prefs import (
+    FIXED_ORDER_REASONS,
+    MAIN_PATH_SECTIONS,
+    MAX_FONT_SCALE,
+    MIN_FONT_SCALE,
+    load_prefs,
+    ranked_action_ids,
+    record_action_use,
+    save_prefs,
+)
 from settings_registry import SETTING_FIELDS
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -31,6 +45,15 @@ DEFAULT_PORT = 8765
 RULE_ACTIONS = [
     "report", "remove", "modmail", "ban", "lock", "unlock",
     "spam", "approve", "reply", "set_flair",
+]
+
+# Rankable secondary toolbar actions (Done stays fixed — Standard 26).
+RANKABLE_TOOLBAR_ACTIONS = [
+    "settings.customize.toggle",
+    "settings.advanced.toggle",
+    "diagnostics.dump",
+    "launcher.pinRequest",
+    "rules.add",
 ]
 
 
@@ -103,9 +126,11 @@ def _save_rules_data(rules: list[dict]) -> None:
         _validate_rule(rule, index)
     path = _rules_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(rules, f, indent=2)
         f.write("\n")
+    tmp.replace(path)
 
 
 def _provider_info() -> dict[str, dict[str, str]]:
@@ -119,6 +144,171 @@ def _provider_info() -> dict[str, dict[str, str]]:
     }
 
 
+def _field_payload(field) -> dict[str, Any]:
+    return {
+        "key": field.key,
+        "label": field.label,
+        "section": field.section,
+        "field_type": field.field_type,
+        "choices": field.choices,
+        "help_text": field.help_text,
+        "hideable": field.hideable,
+        "advanced": field.advanced,
+    }
+
+
+def _list_actions(prefs: dict[str, Any]) -> list[dict[str, Any]]:
+    ranked = ranked_action_ids(
+        RANKABLE_TOOLBAR_ACTIONS + ["settings.done", "settings.visibility.reset", "settings.persist"],
+        prefs,
+        fixed={"settings.done"},
+    )
+    catalog = {
+        "settings.persist": ("Persist settings now", "Flush pending .env writes", "local-state"),
+        "settings.done": ("Done (Ctrl+Enter)", "Flush pending changes and close", "local-state"),
+        "settings.customize.toggle": ("Customize settings (C)", "Hide or restore optional settings", "local-state"),
+        "settings.advanced.toggle": ("Show advanced (A)", "Reveal uncommon / advanced fields", "local-state"),
+        "settings.visibility.reset": ("Reset visibility", "Show all hideable settings again", "local-state"),
+        "settings.fontScale.set": ("Set font scale", "Change shared UI font scale", "local-state"),
+        "rules.add": ("Add rule (+)", "Append a new moderation rule", "local-state"),
+        "diagnostics.dump": ("Diagnostics (D)", "Dump health snapshot", "read"),
+        "launcher.pinRequest": ("Pin to Start…", "Offer Windows Start pin for this shortcut", "external"),
+        "actions.list": ("List actions", "List AI-triggerable actions", "read"),
+    }
+    out = []
+    for action_id in ranked:
+        if action_id not in catalog:
+            continue
+        label, description, side = catalog[action_id]
+        out.append({
+            "id": action_id,
+            "label": label,
+            "description": description,
+            "sideEffect": side,
+            "enabled": True,
+        })
+    for action_id, (label, description, side) in catalog.items():
+        if any(a["id"] == action_id for a in out):
+            continue
+        out.append({
+            "id": action_id,
+            "label": label,
+            "description": description,
+            "sideEffect": side,
+            "enabled": True,
+        })
+    return out
+
+
+def _offer_start_pin(prefs: dict[str, Any]) -> dict[str, Any]:
+    """User-confirmed Start pin request (Windows). Declined state is persisted."""
+    if prefs.get("pinRequestState") == "declined":
+        return {
+            "ok": True,
+            "message": "Pin request previously declined. Re-enable from customize if needed.",
+            "pinRequestState": "declined",
+        }
+    shortcut = Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Optimist Prime Settings.lnk"
+    try:
+        if not shortcut.exists():
+            script = REPO_ROOT / "install_start_menu_shortcut.ps1"
+            if script.exists():
+                subprocess.run(
+                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+        # Open Start Menu Programs so the user can pin intentionally
+        programs = Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+        subprocess.Popen(["explorer.exe", str(programs)], cwd=str(REPO_ROOT))
+        prefs["pinRequestState"] = "offered"
+        save_prefs(REPO_ROOT, prefs)
+        return {
+            "ok": True,
+            "message": "Start Menu folder opened — right-click Optimist Prime Settings → Pin to Start.",
+            "pinRequestState": "offered",
+        }
+    except OSError as exc:
+        prefs["pinRequestState"] = "unsupported"
+        save_prefs(REPO_ROOT, prefs)
+        return {"ok": False, "message": str(exc), "pinRequestState": "unsupported"}
+
+
+def _invoke_action(action_id: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    params = params or {}
+    correlation_id = params.get("correlationId") or str(uuid.uuid4())
+    prefs = load_prefs(REPO_ROOT)
+    log_event(
+        "ui.action.started",
+        f"action {action_id}",
+        action_id=action_id,
+        correlation_id=correlation_id,
+        component="settings_gui",
+    )
+    try:
+        if action_id == "actions.list":
+            result = {"ok": True, "actions": _list_actions(prefs)}
+        elif action_id == "diagnostics.dump":
+            result = dump_diagnostics()
+        elif action_id == "settings.persist":
+            # Client sends values; server-side flush helper for agents
+            payload = params.get("values") or {}
+            if payload:
+                save_env_file(ENV_PATH, _merge_save_payload(payload))
+            result = {"ok": True, "message": "Settings persisted"}
+        elif action_id == "settings.visibility.reset":
+            prefs["hiddenSettingIds"] = []
+            save_prefs(REPO_ROOT, prefs)
+            result = {"ok": True, "prefs": prefs, "message": "Visibility reset"}
+        elif action_id == "settings.fontScale.set":
+            scale = float(params.get("fontScale", prefs.get("fontScale", 1.0)))
+            prefs["fontScale"] = max(MIN_FONT_SCALE, min(MAX_FONT_SCALE, round(scale, 2)))
+            save_prefs(REPO_ROOT, prefs)
+            result = {"ok": True, "prefs": prefs}
+        elif action_id == "launcher.pinRequest":
+            if params.get("decline"):
+                prefs["pinRequestState"] = "declined"
+                save_prefs(REPO_ROOT, prefs)
+                result = {"ok": True, "pinRequestState": "declined", "message": "Pin request declined"}
+            else:
+                result = _offer_start_pin(prefs)
+        elif action_id in (
+            "settings.done",
+            "settings.customize.toggle",
+            "settings.advanced.toggle",
+            "rules.add",
+        ):
+            # Client-side primary; agents get acknowledgment + updated prefs bookkeeping
+            record_action_use(prefs, action_id)
+            save_prefs(REPO_ROOT, prefs)
+            result = {"ok": True, "message": f"Client should run {action_id}", "prefs": prefs}
+        else:
+            result = {"ok": False, "message": f"Unknown action: {action_id}"}
+        if result.get("ok") and action_id in RANKABLE_TOOLBAR_ACTIONS:
+            prefs = load_prefs(REPO_ROOT)
+            record_action_use(prefs, action_id)
+            save_prefs(REPO_ROOT, prefs)
+        log_event(
+            "ui.action.finished",
+            f"action {action_id} ok={result.get('ok')}",
+            action_id=action_id,
+            correlation_id=correlation_id,
+            component="settings_gui",
+        )
+        result["correlationId"] = correlation_id
+        return result
+    except Exception as exc:
+        log_event(
+            "ui.action.rejected",
+            str(exc),
+            action_id=action_id,
+            correlation_id=correlation_id,
+            component="settings_gui",
+        )
+        return {"ok": False, "message": str(exc), "correlationId": correlation_id}
+
+
 HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -127,160 +317,206 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <title>Optimist Prime — Settings</title>
   <style>
     :root {
-      --bg: #f0f4f8;
-      --card: #ffffff;
-      --border: #c8d3e0;
+      --font-scale: 1;
+      --bg: #e8eef4;
+      --panel: #ffffff;
+      --border: #1c2836;
       --text: #1c2836;
       --muted: #5a6b7d;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
+      --accent: #0b63ce;
       --ok: #15803d;
       --err: #b91c1c;
-      --shadow: 0 1px 3px rgba(0,0,0,.08);
+      --inset-text: 16px;
+      --inset-ctrl: 8px;
+      --base: calc(15px * var(--font-scale));
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: var(--base);
       background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
+      line-height: 1.45;
     }
     header {
-      padding: 1rem 1.5rem;
+      padding: var(--inset-text);
       border-bottom: 1px solid var(--border);
-      background: #fff;
-      box-shadow: var(--shadow);
+      background: var(--panel);
       position: sticky;
       top: 0;
       z-index: 10;
     }
-    header h1 { margin: 0 0 0.2rem; font-size: 1.3rem; font-weight: 600; }
-    header p { margin: 0; color: var(--muted); font-size: 0.88rem; }
-    main { max-width: 960px; margin: 0 auto; padding: 1.25rem 1.5rem 3rem; }
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      margin-bottom: 1.25rem;
-      align-items: center;
+    header h1 { margin: 0 0 0.25rem; font-size: calc(1.25rem * var(--font-scale)); font-weight: 650; }
+    header .sub { margin: 0; color: var(--muted); font-size: 0.9em; }
+    main { max-width: 960px; margin: 0 auto; padding: var(--inset-text); }
+    .action-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: 0;
+      margin: 0 0 1rem;
+      border: 1px solid var(--border);
+      background: var(--panel);
     }
-    button {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 0.5rem 1rem;
-      font-size: 0.92rem;
+    .action-row button {
+      margin-block-start: -1px;
+      margin-inline-start: -1px;
+      min-height: 2.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: #fff;
+      color: #000;
+      font: inherit;
+      font-weight: 600;
+      padding: 0.65rem 0.75rem;
       cursor: pointer;
-      font-weight: 500;
+      line-height: 1.25;
+      white-space: normal;
     }
-    button:hover { background: var(--accent-hover); }
-    button.secondary { background: #e8eef5; color: var(--text); border: 1px solid var(--border); }
-    button.secondary:hover { background: #dce4ee; }
-    button.danger { background: #fff; color: var(--err); border: 1px solid #f0c4c4; }
-    button.danger:hover { background: #fef2f2; }
-    #status { flex: 1; min-width: 180px; font-size: 0.88rem; color: var(--muted); }
+    .action-row button:hover { background: #e5e7eb; z-index: 1; position: relative; }
+    .action-row button.primary { background: var(--accent); color: #fff; }
+    .action-row button.primary:hover { filter: brightness(0.95); }
+    #status { min-height: 1.4em; margin: 0.35rem 0 0.85rem; color: var(--muted); font-size: 0.92em; }
     #status.ok { color: var(--ok); }
     #status.err { color: var(--err); }
-    section.card {
-      background: var(--card);
+    .font-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.65rem;
+      flex-wrap: wrap;
+    }
+    .font-row label { font-weight: 600; }
+    .font-row input[type="range"] { flex: 1; min-width: 140px; }
+    section.panel {
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.2rem;
-      margin-bottom: 1rem;
-      box-shadow: var(--shadow);
+      border-radius: 0;
+      margin: 0 0 -1px;
+      padding: var(--inset-text);
     }
-    section.card h2 {
-      margin: 0 0 0.75rem;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #2d3f54;
+    section.panel + section.panel { border-top: none; }
+    section.panel h2 {
+      margin: 0 0 0.65rem;
+      font-size: 1.05em;
+      font-weight: 650;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      align-items: center;
     }
-    .field { margin-bottom: 0.75rem; }
-    .field label { display: block; font-size: 0.86rem; margin-bottom: 0.2rem; font-weight: 500; }
-    .field .help { font-size: 0.76rem; color: var(--muted); margin-top: 0.15rem; }
-    input[type="text"], input[type="password"], input[type="number"], select, textarea {
-      width: 100%;
-      padding: 0.45rem 0.6rem;
-      border-radius: 6px;
+    .field {
+      margin-bottom: 0.65rem;
+      padding: var(--inset-ctrl);
+    }
+    .field.hidden { display: none; }
+    .field label { display: block; font-weight: 600; margin-bottom: 0.2rem; }
+    .field .label-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .help-btn {
       border: 1px solid var(--border);
       background: #fff;
+      color: #000;
+      border-radius: 0;
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .help-pop {
+      display: none;
+      margin-top: 0.25rem;
+      color: var(--muted);
+      font-size: 0.88em;
+    }
+    .help-pop.open { display: block; }
+    input[type="text"], input[type="password"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 0.45rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: #fff;
       color: var(--text);
-      font-size: 0.9rem;
+      font: inherit;
     }
-    input:focus, select:focus, textarea:focus {
-      outline: 2px solid #93b4f5;
-      border-color: var(--accent);
-    }
-    textarea { min-height: 3.5rem; resize: vertical; font-family: inherit; }
     .bool-row { display: flex; align-items: center; gap: 0.45rem; }
     .bool-row input { width: auto; }
-    .bool-row label { margin: 0; font-weight: 500; }
+    .bool-row label { margin: 0; font-weight: 600; }
     .provider-hint {
-      font-size: 0.8rem;
+      font-size: 0.88em;
       color: var(--muted);
-      margin-top: 0.5rem;
-      padding: 0.45rem 0.6rem;
-      background: #f7f9fc;
-      border-radius: 6px;
+      margin-top: 0.35rem;
+      padding: var(--inset-ctrl);
       border: 1px dashed var(--border);
     }
-    .rules-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; align-items: center; }
-    .rules-path { font-size: 0.8rem; color: var(--muted); flex: 1; }
+    .rules-toolbar { margin-bottom: 0.65rem; }
     .rule-card {
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 0.65rem;
+      padding: var(--inset-text);
+      margin: 0 0 -1px;
       background: #fafbfd;
     }
     .rule-card.inactive { opacity: 0.72; }
-    .rule-head {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-      flex-wrap: wrap;
-    }
+    .rule-head { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.5rem; }
     .rule-head .name-input { flex: 1; min-width: 160px; font-weight: 600; }
-    .actions-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem 0.75rem;
-      margin-top: 0.35rem;
-    }
-    .actions-grid label { font-size: 0.82rem; font-weight: normal; display: flex; align-items: center; gap: 0.25rem; }
+    .actions-grid { display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; margin-top: 0.35rem; }
     .conds-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.35rem; }
-    .conds-row label { font-size: 0.82rem; font-weight: normal; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
     @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+    .hidden-box {
+      display: none;
+      margin-top: 0.75rem;
+      padding: var(--inset-text);
+      border: 1px solid var(--border);
+      background: #f7f9fc;
+    }
+    .hidden-box.open { display: block; }
+    .kbd { font-size: 0.82em; color: var(--muted); }
+    .diag {
+      display: none;
+      white-space: pre-wrap;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.82em;
+      border: 1px solid var(--border);
+      padding: var(--inset-text);
+      background: #0f172a;
+      color: #e2e8f0;
+      margin-bottom: 1rem;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .diag.open { display: block; }
+    .resume-note { color: var(--muted); font-size: 0.9em; margin: 0 0 0.75rem; }
   </style>
 </head>
 <body>
   <header>
     <h1>Optimist Prime — Settings</h1>
-    <p>All changes save locally. Close this tab or click <strong>Done</strong> when finished.</p>
+    <p class="sub">Changes save automatically. Close this tab or press <span class="kbd">Ctrl+Enter</span> / <strong>Done</strong> when finished — you can reopen anytime to resume.</p>
+    <div class="font-row">
+      <label for="fontScale">Text size</label>
+      <input type="range" id="fontScale" min="0.9" max="1.6" step="0.1" value="1" />
+      <span id="fontScaleLabel">100%</span>
+    </div>
   </header>
   <main>
-    <div class="toolbar">
-      <button type="button" id="saveBtn">Save all</button>
-      <button type="button" class="secondary" id="doneBtn">Done</button>
-      <span id="status"></span>
-    </div>
+    <div class="action-row" id="actionRow"></div>
+    <div id="status" role="status"></div>
+    <p class="resume-note">Main path: Reddit, Safety, TLDR, Engagement. Advanced and rules stay out of the way until you open them.</p>
+    <pre class="diag" id="diagPanel"></pre>
     <div id="sections"></div>
-    <section class="card" id="rulesSection">
+    <section class="panel" id="rulesSection">
       <h2>AI moderation rules</h2>
-      <p style="margin:0 0 0.75rem;font-size:0.88rem;color:var(--muted)">
-        Each rule is a yes/no question the AI evaluates on posts and comments.
-      </p>
-      <div class="rules-toolbar">
-        <button type="button" class="secondary" id="addRuleBtn">+ Add rule</button>
-        <span class="rules-path" id="rulesPath"></span>
-      </div>
+      <p class="resume-note">Each rule is a yes/no question the AI evaluates on posts and comments.</p>
+      <div class="rules-toolbar" id="rulesToolbar"></div>
+      <div class="rules-path resume-note" id="rulesPath"></div>
       <div id="rulesMetaFields" class="grid-2"></div>
       <div id="rulesList"></div>
     </section>
+    <div class="hidden-box" id="hiddenBox">
+      <strong>Hidden settings</strong>
+      <div id="hiddenList"></div>
+    </div>
   </main>
   <script>
     let providers = {};
@@ -288,33 +524,185 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let rules = [];
     let rulesPath = "";
     let rulesSource = "";
+    let prefs = {};
+    let persistRevision = 0;
+    let lastPersistedRevision = 0;
+    let settingsTimer = null;
+    let rulesTimer = null;
+    let saving = false;
     const RULE_ACTIONS = """ + json.dumps(RULE_ACTIONS) + r""";
+    const MAIN_PATH = """ + json.dumps(list(MAIN_PATH_SECTIONS)) + r""";
+    const FIXED_REASONS = """ + json.dumps(FIXED_ORDER_REASONS) + r""";
 
     function shutdown() {
       try { navigator.sendBeacon("/api/shutdown"); } catch (e) {}
     }
-    window.addEventListener("pagehide", shutdown);
-    window.addEventListener("beforeunload", shutdown);
+    window.addEventListener("pagehide", () => { flushNow(); shutdown(); });
+    window.addEventListener("beforeunload", () => { flushNow(); shutdown(); });
+
+    function setStatus(msg, ok) {
+      const el = document.getElementById("status");
+      el.textContent = msg || "";
+      el.className = ok === true ? "ok" : (ok === false ? "err" : "");
+    }
+
+    function applyFontScale(scale) {
+      document.documentElement.style.setProperty("--font-scale", String(scale));
+      document.getElementById("fontScale").value = scale;
+      document.getElementById("fontScaleLabel").textContent = Math.round(scale * 100) + "%";
+    }
 
     async function load() {
-      const [settingsRes, metaRes, rulesRes] = await Promise.all([
+      const [settingsRes, metaRes, rulesRes, prefsRes, actionsRes] = await Promise.all([
         fetch("/api/settings"),
         fetch("/api/meta"),
         fetch("/api/rules"),
+        fetch("/api/prefs"),
+        fetch("/api/actions"),
       ]);
       const settings = await settingsRes.json();
       providers = (await metaRes.json()).providers;
       const rulesData = await rulesRes.json();
+      prefs = (await prefsRes.json()).prefs || {};
       fields = settings.fields;
       rules = rulesData.rules || [];
       rulesPath = rulesData.path || "";
       rulesSource = rulesData.source || "";
+      applyFontScale(prefs.fontScale || 1);
+      renderActions(await actionsRes.json());
       render(settings.values);
       renderRules();
       updateProviderHint(settings.values.BOT_LLM_PROVIDER);
       if (rulesSource === "example") {
-        setStatus("Showing example rules — click Save all to create your rules file.", null);
+        setStatus("Showing example rules — edits auto-create your rules file.", true);
+      } else {
+        setStatus("Ready — edits auto-save.", true);
       }
+    }
+
+    function renderActions(data) {
+      const actions = (data && data.actions) || [];
+      const row = document.getElementById("actionRow");
+      row.innerHTML = "";
+      const wanted = [
+        "settings.done",
+        "settings.customize.toggle",
+        "settings.advanced.toggle",
+        "diagnostics.dump",
+        "launcher.pinRequest",
+      ];
+      const byId = Object.fromEntries(actions.map(a => [a.id, a]));
+      // Frequency-ranked order from server, Done forced first
+      const ordered = ["settings.done"].concat(
+        (data.rankedToolbar || wanted.filter(id => id !== "settings.done"))
+      );
+      const seen = new Set();
+      for (const id of ordered) {
+        if (seen.has(id) || !byId[id]) continue;
+        seen.add(id);
+        const a = byId[id];
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.action = a.id;
+        if (a.id === "settings.done") btn.className = "primary";
+        btn.textContent = a.label;
+        btn.title = a.description;
+        btn.addEventListener("click", () => runAction(a.id));
+        row.appendChild(btn);
+      }
+      const rulesTb = document.getElementById("rulesToolbar");
+      rulesTb.innerHTML = "";
+      const add = document.createElement("button");
+      add.type = "button";
+      add.dataset.action = "rules.add";
+      add.textContent = "Add rule (+)";
+      add.addEventListener("click", () => runAction("rules.add"));
+      rulesTb.appendChild(add);
+    }
+
+    async function runAction(actionId, params) {
+      if (actionId === "settings.done") {
+        const ok = await flushNow();
+        if (!ok) return;
+        shutdown();
+        setStatus("Closing…", true);
+        setTimeout(() => window.close(), 250);
+        return;
+      }
+      if (actionId === "settings.customize.toggle") {
+        prefs.customizeMode = !prefs.customizeMode;
+        await savePrefs();
+        render(collectSettings());
+        return;
+      }
+      if (actionId === "settings.advanced.toggle") {
+        prefs.showAdvanced = !prefs.showAdvanced;
+        await savePrefs();
+        render(collectSettings());
+        setStatus(prefs.showAdvanced ? "Advanced settings shown." : "Advanced settings hidden.", true);
+        return;
+      }
+      if (actionId === "rules.add") {
+        rules.push(defaultRule());
+        renderRules();
+        scheduleRulesPersist();
+        await fetch("/api/actions/rules.add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (actionId === "diagnostics.dump") {
+        const res = await fetch("/api/diagnostics");
+        const data = await res.json();
+        const panel = document.getElementById("diagPanel");
+        panel.textContent = JSON.stringify(data, null, 2);
+        panel.classList.add("open");
+        setStatus("Diagnostics loaded.", true);
+        await fetch("/api/actions/diagnostics.dump", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (actionId === "launcher.pinRequest") {
+        const res = await fetch("/api/actions/launcher.pinRequest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(params || {}),
+        });
+        const data = await res.json();
+        setStatus(data.message || (data.ok ? "Pin offered." : "Pin failed."), data.ok);
+        return;
+      }
+      if (actionId === "settings.visibility.reset") {
+        const res = await fetch("/api/actions/settings.visibility.reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const data = await res.json();
+        prefs = data.prefs || prefs;
+        render(collectSettings());
+        setStatus("Visibility reset.", true);
+      }
+    }
+
+    async function savePrefs() {
+      await fetch("/api/prefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prefs),
+      });
+    }
+
+    function isFieldVisible(f) {
+      const hidden = new Set(prefs.hiddenSettingIds || []);
+      if (hidden.has(f.key) && !prefs.customizeMode) return false;
+      if (f.advanced && !prefs.showAdvanced && !prefs.customizeMode) return false;
+      return true;
     }
 
     function render(values) {
@@ -325,38 +713,89 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
       const root = document.getElementById("sections");
       root.innerHTML = "";
-      for (const [section, sectionFields] of Object.entries(bySection)) {
-        const card = document.createElement("section");
-        card.className = "card";
-        card.innerHTML = "<h2>" + section + "</h2>";
+      const sectionOrder = Object.keys(bySection);
+      for (const section of sectionOrder) {
+        const sectionFields = bySection[section];
+        const isMain = MAIN_PATH.includes(section);
+        if (!isMain && !prefs.showAdvanced && !prefs.customizeMode) continue;
+        const visibleFields = sectionFields.filter(isFieldVisible);
+        if (!visibleFields.length && !prefs.customizeMode) continue;
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.dataset.section = section;
+        const h2 = document.createElement("h2");
+        h2.innerHTML = "<span>" + section + "</span>" +
+          (isMain ? "" : '<span class="kbd">advanced</span>');
+        panel.appendChild(h2);
         for (const f of sectionFields) {
-          card.appendChild(renderField(f, values[f.key] || ""));
+          if (!isFieldVisible(f) && !(prefs.customizeMode && (prefs.hiddenSettingIds || []).includes(f.key))) {
+            if (!(prefs.customizeMode && f.hideable)) continue;
+          }
+          if (!isFieldVisible(f) && !prefs.customizeMode) continue;
+          panel.appendChild(renderField(f, values[f.key] || ""));
         }
         if (section === "LLM") {
           const hint = document.createElement("div");
           hint.className = "provider-hint";
           hint.id = "providerHint";
-          card.appendChild(hint);
+          panel.appendChild(hint);
         }
-        root.appendChild(card);
+        root.appendChild(panel);
       }
       const rulesMeta = document.getElementById("rulesMetaFields");
       rulesMeta.innerHTML = "";
       for (const f of fields) {
-        if (f.section === "Moderation rules") {
+        if (f.section === "Moderation rules" && isFieldVisible(f)) {
           rulesMeta.appendChild(renderField(f, values[f.key] || ""));
         }
       }
-      const pathEl = document.getElementById("BOT_MODERATION_RULES_FILE");
-      if (pathEl) pathEl.addEventListener("change", () => {
-        rulesPath = pathEl.value;
-        document.getElementById("rulesPath").textContent = "File: " + rulesPath;
-      });
+      renderHiddenBox(values);
+      updateProviderHint(values.BOT_LLM_PROVIDER);
+      wireFieldListeners();
+    }
+
+    function renderHiddenBox(values) {
+      const box = document.getElementById("hiddenBox");
+      const list = document.getElementById("hiddenList");
+      list.innerHTML = "";
+      const hidden = prefs.hiddenSettingIds || [];
+      if (!prefs.customizeMode) {
+        box.classList.remove("open");
+        return;
+      }
+      box.classList.add("open");
+      if (!hidden.length) {
+        list.textContent = "No hidden settings.";
+        return;
+      }
+      for (const key of hidden) {
+        const f = fields.find(x => x.key === key);
+        const row = document.createElement("div");
+        row.className = "field";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Show: " + (f ? f.label : key);
+        btn.addEventListener("click", async () => {
+          prefs.hiddenSettingIds = hidden.filter(k => k !== key);
+          await savePrefs();
+          render(collectSettings());
+        });
+        row.appendChild(btn);
+        list.appendChild(row);
+      }
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.textContent = "Reset visibility";
+      reset.addEventListener("click", () => runAction("settings.visibility.reset"));
+      list.appendChild(reset);
     }
 
     function renderField(f, value) {
       const wrap = document.createElement("div");
       wrap.className = "field";
+      wrap.dataset.key = f.key;
+      const labelRow = document.createElement("div");
+      labelRow.className = "label-row";
       if (f.field_type === "bool") {
         const checked = value === "true";
         wrap.innerHTML = '<div class="bool-row"><input type="checkbox" id="' + f.key + '"' +
@@ -365,20 +804,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const opts = (f.choices || []).map(c =>
           '<option value="' + c + '"' + (c === value ? " selected" : "") + ">" + (c || "(default)") + "</option>"
         ).join("");
-        wrap.innerHTML = '<label for="' + f.key + '">' + f.label + '</label><select id="' + f.key + '">' + opts + "</select>";
+        wrap.innerHTML = '<div class="label-row"><label for="' + f.key + '">' + f.label + '</label></div>' +
+          '<select id="' + f.key + '">' + opts + "</select>";
       } else if (f.field_type === "text") {
-        wrap.innerHTML = '<label for="' + f.key + '">' + f.label + '</label><textarea id="' + f.key + '">' + esc(value) + "</textarea>";
+        wrap.innerHTML = '<div class="label-row"><label for="' + f.key + '">' + f.label + '</label></div>' +
+          '<textarea id="' + f.key + '">' + esc(value) + "</textarea>";
       } else {
         const type = f.field_type === "password" ? "password" : ((f.field_type === "int" || f.field_type === "float") ? "number" : "text");
         const ph = f.field_type === "password" ? "Leave blank to keep existing" : "";
-        wrap.innerHTML = '<label for="' + f.key + '">' + f.label + '</label><input type="' + type + '" id="' + f.key +
-          '" value="' + escAttr(value) + '" placeholder="' + ph + '" />';
+        wrap.innerHTML = '<div class="label-row"><label for="' + f.key + '">' + f.label + '</label></div>' +
+          '<input type="' + type + '" id="' + f.key + '" value="' + escAttr(value) + '" placeholder="' + ph + '" />';
       }
       if (f.help_text) {
-        const help = document.createElement("div");
-        help.className = "help";
-        help.textContent = f.help_text;
-        wrap.appendChild(help);
+        const row = wrap.querySelector(".label-row") || wrap.querySelector(".bool-row");
+        const helpBtn = document.createElement("button");
+        helpBtn.type = "button";
+        helpBtn.className = "help-btn";
+        helpBtn.textContent = "?";
+        helpBtn.title = f.help_text;
+        helpBtn.setAttribute("aria-label", "Help for " + f.label);
+        const pop = document.createElement("div");
+        pop.className = "help-pop";
+        pop.textContent = f.help_text;
+        helpBtn.addEventListener("click", () => pop.classList.toggle("open"));
+        if (row) row.appendChild(helpBtn);
+        wrap.appendChild(pop);
+      }
+      if (prefs.customizeMode && f.hideable) {
+        const hideBtn = document.createElement("button");
+        hideBtn.type = "button";
+        hideBtn.textContent = "Hide";
+        hideBtn.style.marginTop = "0.25rem";
+        hideBtn.addEventListener("click", async () => {
+          const set = new Set(prefs.hiddenSettingIds || []);
+          set.add(f.key);
+          prefs.hiddenSettingIds = [...set];
+          await savePrefs();
+          render(collectSettings());
+        });
+        wrap.appendChild(hideBtn);
       }
       return wrap;
     }
@@ -417,7 +881,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         '<div class="rule-head">' +
           '<input class="name-input" data-f="name" value="' + escAttr(rule.name || "") + '" />' +
           '<label class="bool-row"><input type="checkbox" data-f="active"' + (rule.active !== false ? " checked" : "") + " /> Active</label>" +
-          '<button type="button" class="danger" data-del="' + idx + '">Remove</button>' +
+          '<button type="button" data-del="' + idx + '">Remove</button>' +
         "</div>" +
         '<div class="field"><label>Question for the AI</label><textarea data-f="description">' + esc(rule.description || "") + "</textarea></div>" +
         '<div class="grid-2">' +
@@ -432,13 +896,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
           '<label><input type="checkbox" data-cond="skip_mods"' + (cond.skip_mods !== false ? " checked" : "") + " /> Skip moderators</label>" +
           '<label><input type="checkbox" data-cond="skip_approved"' + (cond.skip_approved ? " checked" : "") + " /> Skip approved</label>" +
         "</div>";
-      card.querySelector("[data-del]").addEventListener("click", () => { rules.splice(idx, 1); renderRules(); });
+      card.querySelector("[data-del]").addEventListener("click", () => {
+        // Inline three-activation confirmation for local destructive remove
+        const btn = card.querySelector("[data-del]");
+        const n = Number(btn.dataset.confirm || 0) + 1;
+        btn.dataset.confirm = String(n);
+        if (n < 3) {
+          btn.textContent = "Confirm remove (" + (3 - n) + ")";
+          return;
+        }
+        rules.splice(idx, 1);
+        renderRules();
+        scheduleRulesPersist();
+      });
       card.querySelectorAll("[data-f]").forEach(el => {
-        el.addEventListener("change", () => syncRuleFromCard(card, idx));
-        el.addEventListener("input", () => syncRuleFromCard(card, idx));
+        el.addEventListener("change", () => { syncRuleFromCard(card, idx); scheduleRulesPersist(); });
+        el.addEventListener("input", () => { syncRuleFromCard(card, idx); scheduleRulesPersist(); });
       });
       card.querySelectorAll("[data-actions] input, [data-cond]").forEach(el => {
-        el.addEventListener("change", () => syncRuleFromCard(card, idx));
+        el.addEventListener("change", () => { syncRuleFromCard(card, idx); scheduleRulesPersist(); });
       });
       return card;
     }
@@ -475,10 +951,83 @@ HTML_PAGE = r"""<!DOCTYPE html>
       return rules;
     }
 
-    function setStatus(msg, ok) {
-      const el = document.getElementById("status");
-      el.textContent = msg;
-      el.className = ok === true ? "ok" : (ok === false ? "err" : "");
+    function markDirty(mode) {
+      persistRevision += 1;
+      if (mode === "immediate") scheduleSettingsPersist(0);
+      else scheduleSettingsPersist(750);
+    }
+
+    function scheduleSettingsPersist(ms) {
+      clearTimeout(settingsTimer);
+      settingsTimer = setTimeout(() => persistSettings(), ms);
+    }
+
+    function scheduleRulesPersist() {
+      clearTimeout(rulesTimer);
+      setStatus("Saving…");
+      rulesTimer = setTimeout(() => persistRules(), 750);
+    }
+
+    async function persistSettings() {
+      const rev = persistRevision;
+      saving = true;
+      setStatus("Saving…");
+      try {
+        const settingsRes = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectSettings()),
+        });
+        const settingsData = await settingsRes.json();
+        if (!settingsData.ok) { setStatus(settingsData.message, false); return false; }
+        if (rev === persistRevision) lastPersistedRevision = rev;
+        setStatus("Saved.", true);
+        return true;
+      } catch (e) {
+        setStatus(String(e), false);
+        return false;
+      } finally {
+        saving = false;
+      }
+    }
+
+    async function persistRules() {
+      try {
+        const rulesRes = await fetch("/api/rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rules: collectRules() }),
+        });
+        const rulesData = await rulesRes.json();
+        if (!rulesData.ok) { setStatus(rulesData.message, false); return false; }
+        setStatus("Saved.", true);
+        return true;
+      } catch (e) {
+        setStatus(String(e), false);
+        return false;
+      }
+    }
+
+    async function flushNow() {
+      clearTimeout(settingsTimer);
+      clearTimeout(rulesTimer);
+      const a = await persistSettings();
+      const b = await persistRules();
+      return a && b;
+    }
+
+    function wireFieldListeners() {
+      for (const f of fields) {
+        const el = document.getElementById(f.key);
+        if (!el) continue;
+        const mode = (f.field_type === "bool" || f.field_type === "choice") ? "immediate" : "debounced";
+        const handler = () => {
+          if (f.key === "BOT_LLM_PROVIDER") updateProviderHint(el.value);
+          markDirty(mode === "immediate" ? "immediate" : "debounced");
+        };
+        el.addEventListener("change", handler);
+        el.addEventListener("input", handler);
+      }
     }
 
     function updateProviderHint(name) {
@@ -490,41 +1039,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
         " @ " + (p.base_url || "(set OPENAI_BASE_URL)");
     }
 
-    async function saveAll() {
-      setStatus("Saving…");
-      const settingsRes = await fetch("/api/settings", {
+    document.getElementById("fontScale").addEventListener("input", async (e) => {
+      const scale = Number(e.target.value);
+      applyFontScale(scale);
+      prefs.fontScale = scale;
+      await fetch("/api/actions/settings.fontScale.set", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(collectSettings()),
+        body: JSON.stringify({ fontScale: scale }),
       });
-      const settingsData = await settingsRes.json();
-      if (!settingsData.ok) { setStatus(settingsData.message, false); return false; }
-
-      const rulesRes = await fetch("/api/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rules: collectRules() }),
-      });
-      const rulesData = await rulesRes.json();
-      if (!rulesData.ok) { setStatus(rulesData.message, false); return false; }
-
-      setStatus("Saved.", true);
-      return true;
-    }
-
-    document.getElementById("saveBtn").addEventListener("click", () => saveAll());
-    document.getElementById("doneBtn").addEventListener("click", async () => {
-      await saveAll();
-      shutdown();
-      setStatus("Closing…", true);
-      setTimeout(() => window.close(), 300);
     });
-    document.getElementById("addRuleBtn").addEventListener("click", () => {
-      rules.push(defaultRule());
-      renderRules();
-    });
-    document.addEventListener("change", (e) => {
-      if (e.target && e.target.id === "BOT_LLM_PROVIDER") updateProviderHint(e.target.value);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        runAction("settings.done");
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (e.key === "c" || e.key === "C") runAction("settings.customize.toggle");
+        if (e.key === "a" || e.key === "A") runAction("settings.advanced.toggle");
+        if (e.key === "d" || e.key === "D") runAction("diagnostics.dump");
+        if (e.key === "+") runAction("rules.add");
+      }
     });
 
     load().catch(err => setStatus("Failed to load: " + err, false));
@@ -573,21 +1110,17 @@ class SettingsHandler(BaseHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "values": _current_values(),
-                "fields": [
-                    {
-                        "key": f.key,
-                        "label": f.label,
-                        "section": f.section,
-                        "field_type": f.field_type,
-                        "choices": f.choices,
-                        "help_text": f.help_text,
-                    }
-                    for f in SETTING_FIELDS
-                ],
+                "fields": [_field_payload(f) for f in SETTING_FIELDS],
             })
             return
         if path == "/api/meta":
-            self._send_json({"ok": True, "providers": _provider_info(), "env_path": str(ENV_PATH)})
+            self._send_json({
+                "ok": True,
+                "providers": _provider_info(),
+                "env_path": str(ENV_PATH),
+                "fixedOrderReasons": FIXED_ORDER_REASONS,
+                "mainPathSections": list(MAIN_PATH_SECTIONS),
+            })
             return
         if path == "/api/rules":
             try:
@@ -595,6 +1128,21 @@ class SettingsHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, **data})
             except (RuleLoadError, json.JSONDecodeError, OSError) as exc:
                 self._send_json({"ok": False, "message": str(exc)}, status=400)
+            return
+        if path == "/api/prefs":
+            self._send_json({"ok": True, "prefs": load_prefs(REPO_ROOT)})
+            return
+        if path == "/api/diagnostics":
+            self._send_json(dump_diagnostics())
+            return
+        if path == "/api/actions":
+            prefs = load_prefs(REPO_ROOT)
+            ranked = ranked_action_ids(RANKABLE_TOOLBAR_ACTIONS, prefs, fixed=set())
+            self._send_json({
+                "ok": True,
+                "actions": _list_actions(prefs),
+                "rankedToolbar": ranked,
+            })
             return
         self._send_json({"ok": False, "message": "Not found"}, status=404)
 
@@ -605,6 +1153,7 @@ class SettingsHandler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 merged = _merge_save_payload(payload)
                 save_env_file(ENV_PATH, merged)
+                log_event("settings.persisted", "settings saved", component="settings_gui")
                 self._send_json({"ok": True, "message": "Settings saved"})
             except Exception as exc:
                 self._send_json({"ok": False, "message": str(exc)}, status=400)
@@ -613,9 +1162,27 @@ class SettingsHandler(BaseHTTPRequestHandler):
             try:
                 payload = self._read_json()
                 _save_rules_data(payload.get("rules", []))
+                log_event("rules.persisted", "rules saved", component="settings_gui")
                 self._send_json({"ok": True, "message": "Rules saved"})
-            except (RuleLoadError, json.JSONDecodeError, TypeError) as exc:
+            except (RuleLoadError, json.JSONDecodeError, TypeError, OSError) as exc:
                 self._send_json({"ok": False, "message": str(exc)}, status=400)
+            return
+        if path == "/api/prefs":
+            try:
+                payload = self._read_json()
+                prefs = save_prefs(REPO_ROOT, payload)
+                self._send_json({"ok": True, "prefs": prefs})
+            except Exception as exc:
+                self._send_json({"ok": False, "message": str(exc)}, status=400)
+            return
+        if path.startswith("/api/actions/"):
+            action_id = path[len("/api/actions/"):]
+            try:
+                params = self._read_json()
+            except json.JSONDecodeError:
+                params = {}
+            result = _invoke_action(action_id, params)
+            self._send_json(result, status=200 if result.get("ok") else 400)
             return
         if path == "/api/shutdown":
             self._send_json({"ok": True})
@@ -625,6 +1192,8 @@ class SettingsHandler(BaseHTTPRequestHandler):
 
 
 def run_server(port: int, open_browser: bool) -> None:
+    configure_logging(also_stderr=False)
+    log_event("settings_gui.startup", f"listening on port {port}", component="settings_gui")
     server = ThreadingHTTPServer(("127.0.0.1", port), SettingsHandler)
     SettingsHandler.http_server = server
     url = f"http://127.0.0.1:{port}/"

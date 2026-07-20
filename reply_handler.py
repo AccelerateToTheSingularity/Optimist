@@ -87,9 +87,9 @@ def check_inbox_replies(
                 replied_to.add(item.id)  # Mark as processed
                 continue
             
-            # Skip if author is a bot
+            # Skip if author is a bot (includes runtime + migrated owned accounts)
             author_name = item.author.name if item.author else None
-            if is_likely_bot(author_name):
+            if is_likely_bot(author_name, bot_username):
                 replied_to.add(item.id)
                 continue
             

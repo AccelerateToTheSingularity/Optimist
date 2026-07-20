@@ -91,7 +91,7 @@ BOT_INDICATORS = [
 ]
 
 # Owned bot usernames (never respond to these)
-BOT_OWNED_USERNAMES = ["OptimistPrime_AI_Bot", "ai-mod-suite-bot"]
+BOT_OWNED_USERNAMES = ["OptimistPrime_AI_Bot", "ai-mod-suite-bot", "random87643", "proai-ai-mod"]
 
 # ===== CROSSPOST SETTINGS =====
 # Crosspost top AI posts from r/accelerate to r/ProAI

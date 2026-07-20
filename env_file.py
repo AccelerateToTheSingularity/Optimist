@@ -1,9 +1,12 @@
 """
 Load and save local .env files (no python-dotenv dependency).
+
+Writes are atomic (temp + replace) with a last-known-good `.env.bak` backup.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -28,17 +31,10 @@ def load_env_file(path: str | Path) -> dict[str, str]:
     return result
 
 
-def save_env_file(path: str | Path, values: dict[str, str]) -> None:
-    """Write .env preserving comments from template header."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    existing = load_env_file(path) if path.exists() else {}
-    merged = {**existing, **{k: v for k, v in values.items() if v is not None}}
-
+def _format_env_contents(merged: dict[str, str]) -> str:
     lines = [
         "# Optimist Prime bot — local settings (gitignored; do not commit)",
-        "# Edit via: py settings_gui.py",
+        "# Edit via: py settings_gui.py — changes auto-save",
         "",
     ]
     for key in sorted(merged.keys()):
@@ -46,14 +42,33 @@ def save_env_file(path: str | Path, values: dict[str, str]) -> None:
         if val == "":
             lines.append(f"{key}=")
         else:
-            # Quote values with spaces or # characters
             if any(c in val for c in " #\t"):
                 safe = val.replace("\\", "\\\\").replace('"', '\\"')
                 lines.append(f'{key}="{safe}"')
             else:
                 lines.append(f"{key}={val}")
+    return "\n".join(lines) + "\n"
 
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+def save_env_file(path: str | Path, values: dict[str, str]) -> None:
+    """Atomically write .env and keep a `.env.bak` last-known-good copy."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = load_env_file(path) if path.exists() else {}
+    merged = {**existing, **{k: v for k, v in values.items() if v is not None}}
+    contents = _format_env_contents(merged)
+
+    tmp_path = Path(str(path) + ".tmp")
+    bak_path = Path(str(path) + ".bak")
+    tmp_path.write_text(contents, encoding="utf-8")
+    if path.exists():
+        try:
+            # Refresh last-known-good before replace
+            bak_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError:
+            pass
+    os.replace(tmp_path, path)
 
 
 def load_local_env(path: str | Path | None = None, *, override: bool = False) -> dict[str, str]:

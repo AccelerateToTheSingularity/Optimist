@@ -2,7 +2,12 @@
 
 import unittest
 
-from bot_comment_format import format_bot_comment, BOT_COMMENT_FOOTER, CURRENT_FOOTER_REGEX
+from bot_comment_format import (
+    format_bot_comment,
+    BOT_COMMENT_FOOTER,
+    CURRENT_FOOTER_REGEX,
+    strip_bot_footer,
+)
 
 
 class TestBotCommentFormat(unittest.TestCase):
@@ -41,6 +46,24 @@ class TestBotCommentFormat(unittest.TestCase):
         text = f"Some text\n\n---\n**{BOT_COMMENT_FOOTER}**"
         match = CURRENT_FOOTER_REGEX.search(text)
         self.assertIsNotNone(match)
+
+    def test_new_footer_does_not_contain_summon_phrase(self):
+        result = format_bot_comment("Helpful answer")
+        self.assertNotIn("!bot", result)
+        self.assertNotIn("mod bot", result.lower())
+
+    def test_legacy_footer_is_replaced(self):
+        result = format_bot_comment(
+            "Helpful answer\n\n---\n*^(AI assistant · mention the bot, mod bot, or use !bot)*"
+        )
+        self.assertEqual(result.count("AI assistant"), 1)
+        self.assertNotIn("!bot", result)
+
+    def test_strip_bot_footer_removes_legacy_and_current_footers(self):
+        legacy = "Reply\n\n---\n*^(AI assistant · mention the bot, mod bot, or use !bot)*"
+        current = f"Reply\n\n---\n{BOT_COMMENT_FOOTER}"
+        self.assertEqual(strip_bot_footer(legacy), "Reply")
+        self.assertEqual(strip_bot_footer(current), "Reply")
 
 
 if __name__ == "__main__":

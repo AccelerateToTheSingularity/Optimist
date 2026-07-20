@@ -83,11 +83,17 @@ py settings_gui.py
 powershell -ExecutionPolicy Bypass -File install_start_menu_shortcut.ps1
 ```
 
-Then open **Start → Optimist Prime Settings** — no terminal window, light-themed UI, closes when you close the browser tab or click **Done**. Edit AI moderation rules directly in the **AI moderation rules** section (not raw JSON).
+Then open **Start → Optimist Prime Settings** — no terminal window, light-themed UI, closes when you close the browser tab or click **Done**. Changes **auto-save** (no Save button). Edit AI moderation rules directly in the **AI moderation rules** section (not raw JSON).
 
-Opens `http://127.0.0.1:8765/` with toggles for LLM provider, Reddit credentials, moderation, TLDR, flair, and more. Password fields left blank keep existing secrets.
+Opens `http://127.0.0.1:8765/` with toggles for LLM provider, Reddit credentials, moderation, TLDR, flair, and more. Password fields left blank keep existing secrets. Use **Show advanced** for uncommon fields; **Customize settings** to hide/restore optional controls.
 
-After saving, run `py bot_runner.py --dry-run` to test. For production (GitHub Actions), mirror the same `BOT_*` vars as repository secrets/variables.
+After editing, run `py bot_runner.py --dry-run` to test. For production (GitHub Actions), mirror the same `BOT_*` vars as repository secrets/variables.
+
+Local health check:
+
+```bash
+py diagnostics.py --pretty
+```
 
 Supported `BOT_LLM_PROVIDER` presets locally: `minimax`, `openai`, `claude`, `gemini`, `deepseek`, `glm`, `groq`, `mistral`, `together`, `xai`, `custom`.
 
